@@ -50,6 +50,16 @@ Use `/arb-doc-sync` to add or update entries after a validated change.
 - **Invalidation condition:** any evidence the two symbols' effective contract size diverges (e.g. a contract
   specification change, or a rollover to a futures month with different terms).
 
+### D-003: Evaluate performance at economic-pair level
+- **Status:** proposed
+- **Date:** 2026-09-14
+- **Decision:** assign a stable `PairID` to both hedge legs and use all-in pair-level P&L as the primary strategy-performance unit
+- **Alternatives considered:** rely on native symbol-level or order-level MT5 statistics
+- **Reason:** spot and futures legs can show misleading standalone profits, losses, win rates, and drawdowns; the strategy hypothesis exists only at combined-pair level
+- **Evidence:** [`docs/01_research/06_EXISTING_SYSTEM_RESEARCH.md`](01_research/06_EXISTING_SYSTEM_RESEARCH.md) — Case Study 002 and public-signal analysis
+- **Risks:** incorrect pairing across partial fills, restarts, scale-outs, or emergency closes
+- **Invalidation condition:** an independently validated attribution method is shown to preserve the same economic information without deterministic pairing
+
 ---
 
 No further decisions recorded yet.
