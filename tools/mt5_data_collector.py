@@ -237,3 +237,265 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ---- Tick data collection (executable bid/ask per tick) --------------------------
+#
+# This section extends the script's first-pass M1-bar gap statistics with true
+# tick-level bid/ask data, as required before any conclusion can feed
+# docs/02_quant/14_TRANSACTION_COST_MODEL.md or 17_EXPECTED_VALUE.md.
+# See docs/01_research/08_TICK_DATA_COLLECTION.md for the full design rationale
+# and acceptance criteria.
+#
+# mt5.copy_ticks_range() is a read-only call -- it never touches the order book.
+
+
+TICK_HISTORY_DAYS = 7      # how far back to request; broker may have less stored
+TICK_SYNC_TOLERANCE_MS = 500  # max age (ms) of the spot quote when merging with a futures tick
+
+
+def collect_tick_data(
+    spot: str,
+    futures: str,
+    from_dt: datetime,
+    to_dt: datetime,
+) -> "tuple[pd.DataFrame, pd.DataFrame]":
+    """
+    Pull raw bid/ask tick history for both symbols.
+    Read-only: no order is placed, checked, or modified.
+
+    Returns (spot_df, futures_df) each with columns:
+        time_msc  int64        — milliseconds since epoch (UTC)
+        time_utc  datetime[tz] — human-readable UTC timestamp
+        bid       float64
+        ask       float64
+        flags     uint32       — MT5 tick flags (bit 1=bid update, bit 2=ask update)
+
+    Filters out volume-only ticks (flags & 0x06 == 0) which carry no bid/ask.
+    """
+    for sym in (spot, futures):
+        if not mt5.symbol_select(sym, True):
+            raise RuntimeError(f"symbol_select({sym!r}) failed: {mt5.last_error()}")
+
+    raw_spot = mt5.copy_ticks_range(spot, from_dt, to_dt, mt5.COPY_TICKS_ALL)
+    raw_fut  = mt5.copy_ticks_range(futures, from_dt, to_dt, mt5.COPY_TICKS_ALL)
+
+    if raw_spot is None or len(raw_spot) == 0:
+        raise RuntimeError(
+            f"copy_ticks_range returned nothing for {spot}: {mt5.last_error()}. "
+            "Is the Market Watch subscribed and does the terminal have tick history for this symbol?"
+        )
+    if raw_fut is None or len(raw_fut) == 0:
+        raise RuntimeError(
+            f"copy_ticks_range returned nothing for {futures}: {mt5.last_error()}. "
+            "Is the Market Watch subscribed and does the terminal have tick history for this symbol?"
+        )
+
+    def _to_df(arr, label: str) -> "pd.DataFrame":
+        df = pd.DataFrame(arr)[["time_msc", "bid", "ask", "flags"]].copy()
+        df["time_utc"] = pd.to_datetime(df["time_msc"], unit="ms", utc=True)
+        # Keep only ticks that carry a bid or ask update.
+        # Bit 1 (0x02) = bid updated, bit 2 (0x04) = ask updated.
+        df = df[df["flags"].apply(lambda f: bool(int(f) & 0x06))].reset_index(drop=True)
+        if len(df) == 0:
+            raise RuntimeError(
+                f"{label}: all ticks had flags=0 (volume-only) — no bid/ask updates in history. "
+                "Try a different date range or check that the symbol's Market Watch is active."
+            )
+        print(
+            f"  {label}: {len(df):,} bid/ask ticks "
+            f"({df['time_utc'].iloc[0]} → {df['time_utc'].iloc[-1]})"
+        )
+        return df
+
+    return _to_df(raw_spot, spot), _to_df(raw_fut, futures)
+
+
+def compute_synchronized_basis(
+    spot_df: "pd.DataFrame",
+    futures_df: "pd.DataFrame",
+    tolerance_ms: int = TICK_SYNC_TOLERANCE_MS,
+) -> "pd.DataFrame":
+    """
+    Merge the two asynchronous tick streams by timestamp.
+
+    For each futures tick, look back to find the most recent spot tick within
+    tolerance_ms and compute the two executable basis values defined in
+    docs/02_quant/11_SPREAD_DEFINITION.md:
+
+        convergence_basis = Bid(futures) - Ask(spot)   # SELL futures / BUY  spot
+        reverse_basis     = Ask(futures) - Bid(spot)   # BUY  futures / SELL spot
+        mid_basis         = Mid(futures) - Mid(spot)   # for statistics only, not executable
+
+    quote_skew_ms: time between the futures tick and the matched spot tick.
+    A value near tolerance_ms means the spot quote was approaching stale at
+    the moment of the futures tick — flag rows where this exceeds 200 ms.
+
+    This is a POST-HOC approximation of synchronization. True live
+    synchronization (simultaneous SymbolInfoTick() reads in MQL5 OnTick, or
+    copy_ticks_range with near-zero latency) is a Phase 1 / real-time concern.
+    Label any statistic derived here as "post-hoc tick merge, tolerance <N> ms".
+    """
+    fut  = futures_df.sort_values("time_msc").reset_index(drop=True)
+    spot = spot_df.sort_values("time_msc").reset_index(drop=True)
+
+    merged = pd.merge_asof(
+        fut.rename(columns={
+            "bid": "fut_bid", "ask": "fut_ask",
+            "time_msc": "fut_time_msc", "time_utc": "fut_time_utc",
+        }),
+        spot.rename(columns={
+            "bid": "spot_bid", "ask": "spot_ask",
+            "time_msc": "spot_time_msc", "time_utc": "spot_time_utc",
+        }),
+        left_on="fut_time_msc",
+        right_on="spot_time_msc",
+        direction="backward",
+        tolerance=tolerance_ms,
+    )
+
+    n_before = len(merged)
+    merged = merged.dropna(subset=["spot_bid", "spot_ask"]).reset_index(drop=True)
+    n_dropped = n_before - len(merged)
+
+    merged["convergence_basis"] = merged["fut_bid"] - merged["spot_ask"]
+    merged["reverse_basis"]     = merged["fut_ask"] - merged["spot_bid"]
+    merged["mid_basis"]         = (
+        (merged["fut_bid"] + merged["fut_ask"]) / 2.0
+        - (merged["spot_bid"] + merged["spot_ask"]) / 2.0
+    )
+    merged["quote_skew_ms"] = (merged["fut_time_msc"] - merged["spot_time_msc"]).astype(int)
+
+    print(
+        f"  Synchronized rows: {len(merged):,} "
+        f"(dropped {n_dropped:,} futures ticks with no spot within {tolerance_ms} ms)"
+    )
+    stale = (merged["quote_skew_ms"] > 200).sum()
+    if stale:
+        print(f"  WARNING: {stale:,} rows ({100*stale/len(merged):.1f}%) "
+              f"have quote_skew_ms > 200 — spot quote was aging at time of futures tick")
+
+    return merged
+
+
+def summarize_basis(df: "pd.DataFrame", tolerance_ms: int = TICK_SYNC_TOLERANCE_MS) -> dict:
+    """Descriptive statistics for the synchronized executable-basis DataFrame."""
+
+    def _stats(col: str) -> dict:
+        s = df[col]
+        return {
+            "n": int(len(s)),
+            "mean":   round(float(s.mean()), 4),
+            "median": round(float(s.median()), 4),
+            "std":    round(float(s.std()), 4),
+            "min":    round(float(s.min()), 4),
+            "max":    round(float(s.max()), 4),
+            "p05":    round(float(s.quantile(0.05)), 4),
+            "p25":    round(float(s.quantile(0.25)), 4),
+            "p75":    round(float(s.quantile(0.75)), 4),
+            "p95":    round(float(s.quantile(0.95)), 4),
+        }
+
+    negatives = int((df["convergence_basis"] < 0).sum())
+    return {
+        "convergence_basis": _stats("convergence_basis"),
+        "reverse_basis":     _stats("reverse_basis"),
+        "mid_basis":         _stats("mid_basis"),
+        "quote_skew_ms":     _stats("quote_skew_ms"),
+        "convergence_basis_negative_rows": negatives,
+        "merge_tolerance_ms": tolerance_ms,
+        "note": (
+            f"Post-hoc tick merge via pd.merge_asof (backward, tolerance={tolerance_ms} ms). "
+            "convergence_basis = Bid(GC-Z26) - Ask(XAUUSD.vx): executable for SELL futures / BUY spot. "
+            "reverse_basis = Ask(GC-Z26) - Bid(XAUUSD.vx): executable for BUY futures / SELL spot. "
+            "mid_basis is for distributional research only — not an executable price. "
+            "These figures are a Phase 0 approximation; true live synchronization is a separate "
+            "Phase 1 requirement before any execution conclusion is drawn."
+        ),
+    }
+
+
+# ---- Updated main: adds tick collection after the existing M1-bar section --------
+
+
+def _main_with_ticks() -> None:
+    """
+    Extended main() that runs the original spec/margin/bar sections and then
+    adds tick-level bid/ask collection and synchronized basis computation.
+
+    Call this instead of main() once the VMware Windows environment is confirmed
+    (see docs/01_research/08_TICK_DATA_COLLECTION.md, Step 2).
+    """
+    connect()
+    try:
+        run_dir = OUTPUT_ROOT / datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        # --- Original sections (unchanged) ---
+        print(f"\n--- Symbol specifications ---")
+        specs = {}
+        for sym in (SPOT_SYMBOL, FUTURES_SYMBOL):
+            spec = dump_symbol_spec(sym)
+            specs[sym] = spec
+            print(
+                f"{sym}: calc_mode={spec['_trade_calc_mode_name']}, "
+                f"trade_mode={spec['_trade_mode_name']}, "
+                f"contract_size={spec.get('trade_contract_size')}, "
+                f"tick_value={spec.get('trade_tick_value')}"
+            )
+        (run_dir / "symbol_specs.json").write_text(json.dumps(specs, indent=2, default=str))
+
+        print(f"\n--- Margin required at {STUDY_VOLUME} lot (no order placed) ---")
+        margins = {}
+        for sym in (SPOT_SYMBOL, FUTURES_SYMBOL):
+            m = margin_required(sym, STUDY_VOLUME)
+            margins[sym] = m
+            print(f"{sym}: BUY margin={m['margin_required_buy']}, SELL margin={m['margin_required_sell']}")
+        (run_dir / "margin_required.json").write_text(json.dumps(margins, indent=2, default=str))
+
+        print(f"\n--- Gap history, last {HISTORY_DAYS} days, M1 bars ---")
+        gap_df = collect_gap_history(SPOT_SYMBOL, FUTURES_SYMBOL, HISTORY_TIMEFRAME, HISTORY_DAYS)
+        gap_df.to_csv(run_dir / "gap_history.csv", index=False)
+        summary = summarize_gap(gap_df)
+        (run_dir / "gap_summary.json").write_text(json.dumps(summary, indent=2))
+        print(json.dumps(summary, indent=2))
+
+        # --- New: tick-level bid/ask collection ---
+        print(f"\n--- Tick data collection, last {TICK_HISTORY_DAYS} days ---")
+        utc_to   = datetime.now(tz=timezone.utc)
+        utc_from = utc_to - timedelta(days=TICK_HISTORY_DAYS)
+        spot_ticks, fut_ticks = collect_tick_data(
+            SPOT_SYMBOL, FUTURES_SYMBOL, utc_from, utc_to
+        )
+        spot_ticks.to_csv(run_dir / f"ticks_{SPOT_SYMBOL}.csv", index=False)
+        fut_ticks.to_csv(run_dir / f"ticks_{FUTURES_SYMBOL}.csv", index=False)
+        print(f"  Tick CSVs written.")
+
+        print(f"\n--- Synchronized executable basis (tolerance={TICK_SYNC_TOLERANCE_MS} ms) ---")
+        basis_df = compute_synchronized_basis(spot_ticks, fut_ticks, TICK_SYNC_TOLERANCE_MS)
+        basis_df.to_csv(run_dir / "basis_synchronized.csv", index=False)
+        basis_summary = summarize_basis(basis_df, TICK_SYNC_TOLERANCE_MS)
+        (run_dir / "basis_summary.json").write_text(json.dumps(basis_summary, indent=2))
+        print(json.dumps(basis_summary, indent=2))
+
+        print(f"\nAll outputs written to: {run_dir}")
+        print(
+            "NEXT STEP: review basis_summary.json and basis_synchronized.csv, then\n"
+            "hand-transcribe decision-relevant findings into:\n"
+            "  docs/02_quant/11_SPREAD_DEFINITION.md  (distributional statistics)\n"
+            "  docs/01_research/07_BROKER_RESEARCH.md (margin_required BUY value for R-001)\n"
+            "Do NOT commit the research/ folder contents."
+        )
+    finally:
+        disconnect()
+
+
+if __name__ == "__main__":
+    # Switch to _main_with_ticks() once the Windows VMware environment is ready
+    # (see docs/01_research/08_TICK_DATA_COLLECTION.md for setup steps).
+    # Until then, main() (M1-bar only) still works without VMware.
+    import sys
+    if "--ticks" in sys.argv:
+        _main_with_ticks()
+    else:
+        main()

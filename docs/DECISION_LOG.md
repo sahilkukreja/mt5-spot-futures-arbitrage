@@ -63,3 +63,28 @@ Use `/arb-doc-sync` to add or update entries after a validated change.
 ---
 
 No further decisions recorded yet.
+
+### D-004: Collect synchronized tick-level bid/ask data via Windows VMware + extended Python collector
+- **Status:** proposed (not yet cleared by `/arb-risk-review` or `/arb-hostile-review`)
+- **Date:** 2026-09-14
+- **Decision:** Extend `tools/mt5_data_collector.py` with `collect_tick_data()` (using
+  `mt5.copy_ticks_range()`) and `compute_synchronized_basis()` (using `pd.merge_asof()`), and run the
+  extended script inside a Windows VMware Fusion VM on the user's Mac (Option A). This is the next bounded
+  Phase 0 data-collection step. Option B (a new MQL5 read-only export Script inside the Mac/Wine terminal)
+  was evaluated and rejected for this step.
+- **Alternatives considered:** Option B — MQL5 Script calling `CopyTicksRange()` inside Mac/Wine MT5,
+  writing CSV to the MT5 sandbox. Rejected because: (1) introduces a new MQL5 artifact requiring
+  design/review/compilation at Phase 0; (2) Wine sandbox extraction is more friction than Python's
+  direct file output; (3) identical underlying tick-history limitation with more moving parts; and
+  (4) Python is better suited to the downstream `pd.merge_asof()` synchronized-merge step.
+- **Reason:** The MetaTrader5 Python package is Windows-only; VMware is the lowest-friction way to run
+  it on the user's Mac without changing the existing script language or pipeline. The tick extension is
+  a minimal addition to a script that already has the connection, symbol, and margin logic, and the
+  output schema directly feeds `11_SPREAD_DEFINITION.md`'s distributional study.
+- **Evidence:** `docs/01_research/08_TICK_DATA_COLLECTION.md` (full design, acceptance criteria, risks,
+  validation steps), `tools/mt5_data_collector.py` (extended with tick functions)
+- **Risks:** (1) VPFX simultaneous-login restriction — use a demo account in the VM or shut down the
+  Mac terminal first; (2) shallow terminal tick history — run live for a full session before collecting;
+  (3) 64-bit Python required. See `08_TICK_DATA_COLLECTION.md` R-A1 through R-A7.
+- **Invalidation condition:** VMware not available or Windows VM not practical — fall back to Option B
+  (requires a separate MQL5 script spec and review before implementation).
