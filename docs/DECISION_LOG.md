@@ -82,9 +82,36 @@ No further decisions recorded yet.
   a minimal addition to a script that already has the connection, symbol, and margin logic, and the
   output schema directly feeds `11_SPREAD_DEFINITION.md`'s distributional study.
 - **Evidence:** `docs/01_research/08_TICK_DATA_COLLECTION.md` (full design, acceptance criteria, risks,
-  validation steps), `tools/mt5_data_collector.py` (extended with tick functions)
+  validation steps), `tools/mt5_data_collector.py` (extended with tick functions). **Executed 2026-09-15**:
+  the `--ticks` run completed on a native Windows machine (not the VMware guest originally planned — see
+  `10_DATA_REQUIREMENTS.md` correction), producing 707,580 synchronized rows and satisfying acceptance
+  criteria AC-2, AC-6, AC-7, AC-8 (see `02_quant/11_SPREAD_DEFINITION.md`). A later full run on
+  2026-09-15 produced 707,467 synchronized rows in `research/2026-09-15T190918Z/`, confirming the
+  collection path is repeatable. Status remains `proposed` —
+  meeting the acceptance criteria is not the same as formal `/arb-risk-review`/`/arb-hostile-review` clearance.
 - **Risks:** (1) VPFX simultaneous-login restriction — use a demo account in the VM or shut down the
   Mac terminal first; (2) shallow terminal tick history — run live for a full session before collecting;
   (3) 64-bit Python required. See `08_TICK_DATA_COLLECTION.md` R-A1 through R-A7.
 - **Invalidation condition:** VMware not available or Windows VM not practical — fall back to Option B
   (requires a separate MQL5 script spec and review before implementation).
+
+### D-005: Adopt a layered architecture skeleton before economics are finalized, with uncalibrated parameters explicitly marked
+- **Status:** proposed (not yet cleared by `/arb-risk-review` or `/arb-hostile-review`)
+- **Date:** 2026-09-15
+- **Decision:** Fix the component boundaries `Market Data → Normalization → Fair Value/Spread → Signal → Risk
+  → Execution → Broker Adapter → MT5` in `docs/03_system_design/20_SYSTEM_ARCHITECTURE.md` now, while
+  `02_quant/12_FAIR_VALUE_MODEL.md` and `14_TRANSACTION_COST_MODEL.md` are still NOT STARTED — but mark every
+  parameter that depends on those (thresholds, timeouts, safety margins) as UNCALIBRATED rather than choosing
+  values.
+- **Alternatives considered:** wait until the full economics milestone (cost model, EV, signal research) is
+  complete before writing any `03_system_design/` document. Rejected for this step only because structural
+  boundaries (layer responsibilities, state ownership, idempotency, restart reconciliation) do not depend on
+  the numeric edge and can be designed/reviewed independently, per this project's own design-skill instruction
+  to mark uncalibrated parameters rather than block on them.
+- **Reason:** gives later documents (`21_EXECUTION_ENGINE.md`, `22_STATE_MACHINE.md`, `24_RISK_ENGINE.md`) a
+  stable interface to fill in once economics close, without pretending the economics milestone is done.
+- **Evidence:** `docs/03_system_design/20_SYSTEM_ARCHITECTURE.md`
+- **Risks:** if read out of context, this document could be mistaken for a signal that the design/economics
+  gate has passed. It explicitly has not — see the document's own "Gate status" section.
+- **Invalidation condition:** if D-001 (broker/instrument pair) changes, or if the layer boundaries prove to
+  need economics-dependent structure (not just parameters) once the cost model exists.

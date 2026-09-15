@@ -44,11 +44,11 @@ data only.
 | Initial margin rate (0–10 lots) | 1% → ~$4,348.01 required margin per 1.0 lot | 2% → ~$8,779.70 required margin per 1.0 lot |
 | Initial margin rate (higher tiers) | ≥10 lots: 2% → ~$8,696.02/lot | 10–20 lots: 3% → ~$13,169.55/lot; ≥20 lots: 5% → ~$21,949.25/lot |
 | Maintenance margin rate | Same as initial at each tier | Same as initial at each tier |
-| Commission | (not captured for spot leg) | 7.5 USD per lot (tier 0–1000 lots), instant by deal volume, in/out |
+| Commission | **$0.00 — no commission charged** (confirmed 2026-09-15: `Commission` column blank/unpopulated across 6 real `XAUUSD.vx` fills reviewed in live account history; likely compensated via spread only) | **$10 USD per lot, round-trip total, now fixed** (confirmed 2026-09-15 via live account history with an explicit `Commission` column. An earlier $16/lot round-trip rate applied to trades opened before 2026-09-14; the broker corrected/fixed it to $10/lot for trades opened since — treat $10/lot as the current stable rate, not measurement noise) |
 | Observed bid/ask (2026-09-11 ~21:35 server time) | 4347.58 / 4347.93 (spread ~35 points) | 4389.75 / 4390.05 (spread ~30 points) |
-| Swap type | In points | (not captured) |
-| Swap long / swap short | -60 / +40 | (not captured) |
-| Swap day multipliers | Mon 1x, Tue 1x, Wed 3x, Thu 1x, Fri (not captured) | (not captured) |
+| Swap type | In points (`swap_mode=1`) | **Disabled** (`swap_mode=0`) — confirmed 2026-09-15 via `symbol_info()`, see `02_quant/14_TRANSACTION_COST_MODEL.md` |
+| Swap long / swap short | -60 / +40 | **0.0 / 0.0** — no daily swap charged either direction |
+| Swap day multipliers | Mon 1x, Tue 1x, Wed 3x, Thu 1x, Fri (not captured) | n/a (swap disabled) |
 | Trading hours (server time) | (not captured) | Sun 23:02–24:00 (quotes); Mon–Thu 00:00–21:58 & 23:01–24:00 (quotes and trade identical) |
 | Exchange or OTC | Labeled CME, calc mode is Forex-style — likely a CFD-on-spot-gold synthetic, not literal exchange execution | CME-referenced futures CFD |
 | Price source | (not captured) | By bid price |
@@ -76,10 +76,19 @@ internal margin methodology, not literal full-notional collateral; the margin-ra
 figure and behaves like ordinary leveraged margin (~100x effective at this tier for the spot leg, ~50x for the
 futures leg).
 
-**Still not yet verified:** the *live* MT5 New Order ticket "Margin required" field, which accounts for the
-exact live price and any per-account adjustments, has not been read directly — the numbers above are computed
-from the margin-rate schedule, which should match but has not been cross-checked against an order ticket. Do
-this opportunistically, without placing an order, before this figure is used for a final Phase 0 decision.
+**Live cross-check — done (2026-09-15).** `tools/mt5_data_collector.py`'s `order_calc_margin()` call (read-only,
+no order placed) returned, at 0.01 lot:
+
+| | BUY margin required | SELL margin required |
+|---|---|---|
+| `XAUUSD.vx` | **$42.96** | $42.95 |
+| `GC-Z26` | **$86.72** | $86.71 |
+
+Combined ≈$129.68 at 0.01/0.01 — agrees closely with the ≈$131.28 schedule estimate above (small difference is
+the live tick price vs. the schedule's reference price). This resolves the residual: the schedule-derived
+figures were correct, and margin is not the blocking constraint for this pair at this size. Raw output:
+`research/2026-09-15T170138Z/margin_required.json` (gitignored working data; this table is the promoted,
+source-of-truth record of that run).
 
 Margin sufficiency does not by itself validate the strategy — it only clears one blocking risk. The hedge
 ratio (0.01/0.01 does not imply equal *exposure* — contract sizes are equal but prices differ, so notional

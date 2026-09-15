@@ -1,15 +1,209 @@
 # Transaction Cost Model
 
-Status: NOT STARTED
+Status: IN PROGRESS — partial. Spread cost and futures commission are sourced; spot commission, slippage,
+and rollover mechanics remain unresolved (Q-002). One material, previously-undocumented finding: **swap cost
+is asymmetric between the two legs and is large relative to the raw gap over any holding period longer than
+a few days.** No Net Executable Edge can be signed yet — this document establishes a cost floor and the
+single biggest open uncertainty, not a go/no-go conclusion.
 
-## Purpose
-Compute the true net executable edge by subtracting all real costs from the raw spread.
+## Objective
+
+Compute the true net executable edge by subtracting all real costs from the raw spread (`11_SPREAD_DEFINITION.md`),
+per `docs/PROJECT_MANDATE.md` → "TRUE NET EDGE". Reject the trade if edge is small relative to cost
+uncertainty (this skill's own instruction) — which, per the finding below, cannot yet be ruled out.
+
+## Scope / definitions
+
+Uses `02_quant/11_SPREAD_DEFINITION.md`'s convergence trade: **BUY `XAUUSD.vx` (spot) / SELL `GC-Z26` (futures)**,
+entering at `convergence_basis = Bid(GC-Z26) − Ask(XAUUSD.vx)`. At 0.01 lot with contract size 100 (both
+symbols), 1.00 of price movement = $1.00 P/L (established in `16_HEDGE_RATIO.md`) — so all costs below are
+computed directly in USD at 0.01 lot by treating price-point costs as dollar-equivalent 1:1.
+
+## Evidence (sourced, 2026-09-15)
+
+Two sources, both from `tools/mt5_data_collector.py` default-mode runs (read-only, no order placed):
+`research/2026-09-15T170138Z/` (margin/gap-history run) and `research/2026-09-15T172247Z/symbol_specs.json`
+(full `symbol_info()` dump — not previously mined beyond the fields already in `07_BROKER_RESEARCH.md`).
+
+| Field | `XAUUSD.vx` | `GC-Z26` | Source |
+|---|---|---|---|
+| Spread (live, 2026-09-15) | 30 points (0.30) | 30 points (0.30) | `symbol_specs.json` `spread` field |
+| `swap_mode` | 1 (`SYMBOL_SWAP_MODE_POINTS`) | 0 (`SYMBOL_SWAP_MODE_DISABLED`) | `symbol_specs.json` |
+| `swap_long` / `swap_short` | −60.0 / +40.0 points/day | 0.0 / 0.0 | `symbol_specs.json` |
+| `swap_rollover3days` | 3 (Wednesday) | 3 (irrelevant — swap disabled) | `symbol_specs.json` |
+| Commission | not captured for spot (Q-002) | **$10/lot, round-trip total** (updated 2026-09-15 from live account trade history — supersedes the earlier $7.50/lot "in/out" spec-window reading) | `07_BROKER_RESEARCH.md` |
+| Quote/profit currency | USD/USD | USD/USD | `07_BROKER_RESEARCH.md` — no FX conversion needed |
+| Live bid/ask (2026-09-15, this run) | 4292.93 / 4293.23 | 4333.30 / 4333.60 | `symbol_specs.json` |
+| Resulting convergence_basis | 4333.30 − 4293.23 = **40.07** | | calculation |
+| Days to `GC-Z26` expiry (25 Nov 2026) from today (2026-09-15) | **71 days** | | calculation |
+
+**Note on gold price movement:** the underlying price has moved materially since the 2026-09-11/12 snapshots
+in `07_BROKER_RESEARCH.md` (~4347 → ~4293), yet the convergence gap is still ~40, close to the earlier ~41.8
+mean from the M1-bar study in `11_SPREAD_DEFINITION.md`. This is a data point (not yet a validated pattern)
+consistent with the gap behaving like a carry-driven quantity that doesn't move 1:1 with the underlying price —
+relevant to `12_FAIR_VALUE_MODEL.md`, still NOT STARTED.
 
 ## Cost components
-Spot spread cost, Futures spread cost, Spot commission, Futures commission, Expected entry slippage,
-Expected exit slippage, Financing, Swap, Carry, Rollover, Currency conversion, Latency uncertainty,
-Execution-risk buffer.
 
-## Deliverable
-Net Executable Edge = Raw Spread − sum(cost components).
-Trading should only be considered when Net Executable Edge > Required Safety Margin.
+| Component | Value | Status |
+|---|---|---|
+| Spot spread cost (round trip) | 0.30 → **$0.30** at 0.01 lot | Sourced (live spread field, not yet a distribution) |
+| Futures spread cost (round trip) | 0.30 → **$0.30** at 0.01 lot | Sourced (same caveat) |
+| Futures commission (round trip, total) | $10 × 0.01 = **$0.10** | Sourced, confirmed fixed 2026-09-15 (see below) |
+| Spot commission | **$0.00** | Sourced 2026-09-15 — **Q-002 partially resolved** |
+| Swap — spot leg (long, held) | −60 pts/day = **−$0.60/day**; ×3 on the Wednesday rollover = **−$1.80** that day | Sourced |
+| Swap — futures leg (short, held) | **$0.00/day** — `swap_mode=0`, confirmed disabled | Sourced (new finding this run) |
+| Financing/carry (embedded, not daily swap) | Not separable from the basis itself yet — `12_FAIR_VALUE_MODEL.md` NOT STARTED | Blocked |
+| Rollover mechanism/cost near expiry | Undocumented — settlement type (cash vs delivery-linked) still unknown | **Blocked on Q-002** |
+| Slippage (entry/exit) | Not measured — no live execution has occurred | Blocked — needs Phase 1 (demo/live) data |
+| Latency uncertainty | Not measured | Blocked — needs Phase 1 data |
+| FX conversion | **$0.00** — both legs quote/settle in USD | Resolved |
+| Execution-risk buffer | Not set — mandate requires this be tied to measured execution data, not chosen arbitrarily | Blocked |
+
+## Calculation: cost floor vs. holding period
+
+**Same-day round trip, known costs only** (spread + futures commission + spot commission, now fully sourced
+at $0; still excludes slippage, rollover, and execution-risk buffer):
+
+```
+$0.30 (spot spread) + $0.30 (futures spread) + $0.10 (futures commission) = $0.70
+≈ 1.7% of the current 40.07 gap
+```
+
+This alone looks favorable. It is not the real picture, because of the swap asymmetry above: **only the spot
+leg pays daily swap; the futures leg pays none.** Every day the position is held costs the trade ~$0.60
+(≈$1.80 on the weekly Wednesday triple-swap) with nothing recovered from the short futures leg. Cumulative
+effect (7 calendar days per week, 1 Wednesday per week, $0.70 fixed cost included once):
+
+| Holding period | Cumulative spot swap | Total known cost | % of 40.07 gap |
+|---|---|---|---|
+| 1 day | $0.60 | $1.30 | 3.2% |
+| 5 days (1 Wed) | $4.20 | $4.90 | 12.2% |
+| 10 days (1–2 Wed) | ≈$6.60–7.20 | ≈$7.30–7.90 | 18–20% |
+| 20 days (≈3 Wed) | ≈$15.60 | ≈$16.30 | 41% |
+| 30 days (≈4 Wed) | ≈$22.80 | ≈$23.50 | **59%** |
+| 71 days (to `GC-Z26` expiry, ≈10 Wed) | ≈$53.85 | ≈$54.55 | **> 100% of the current gap** |
+
+**Headline finding:** at the current swap rate, holding this specific convergence position for the full
+remaining life of the `GC-Z26` contract would cost more in one-sided spot swap alone than the entire
+observed gap — before spot commission, slippage, or any execution-risk buffer are even added. This does not
+mean the trade is unviable; it means **time to convergence is the dominant unresolved variable**, not spread
+or commission (which are individually small). A trade held only a few days faces a very different cost
+picture than one held for weeks.
+
+## Real paired-trade evidence (2026-09-15) — automated reconciliation, n=7
+
+The manual screenshot review (below, superseded) found 6 pairs and mislabeled a 7th trade (`34226815`) as
+unrelated. `tools/mt5_data_collector.py --pairs` (new, this session) pulls the **full** account deal history
+via `mt5.history_deals_get()` (read-only) and reconstructs every closed spot/futures pair automatically —
+removing the sample-size cap imposed by "whatever happened to be visible in a screenshot." It found the same
+6 pairs, **plus a 7th**: `34226815`/`34226816` — the very first `GC-Z26` trade *does* have a matching spot
+leg, opened at the identical timestamp, that wasn't visible in the second screenshot's cropped range.
+
+All 8 closed positions per symbol resolved cleanly except 1 per symbol (see "Currently open pair" below —
+not a data-quality problem, an actually-open position). Full reconciliation
+(`research/2026-09-15T181429Z/reconciled_pairs.csv`):
+
+| Pair (spot / futures ticket) | Entry basis | Exit basis | Basis moved | Duration | Net P&L |
+|---|---|---|---|---|---|
+| 34226816 / 34226815 | 42.05 | 41.47 | narrowed −0.58 | ~3h05m | **+$0.42** |
+| 34227092 / 34227091 | 40.16 | 40.31 | widened +0.15 | ~12h44m | **−$0.31** |
+| 34227214 / 34227213 | 41.01 | 40.31 | narrowed −0.70 | ~11h08m | **+$0.54** |
+| 34229071 / 34229070 | 39.79 | 39.86 | widened +0.07 | ~11h18m | **−$0.17** |
+| 34229105 / 34229104 | 41.32 | 39.93 | narrowed −1.39 | ~11h08m | **+$1.29** |
+| 34229107 / 34229106 | 39.77 | 39.96 | widened +0.19 | ~11h08m | **−$0.29** |
+| 34229430 / 34229429 | 40.15 | 39.96 | narrowed −0.19 | ~8h53m | **+$0.09** |
+
+Every row reconciles exactly to (basis change) + (commission), confirming `11_SPREAD_DEFINITION.md`'s formula
+against real fills. **Net across all 7 pairs: +$1.57 after commission**, over 2026-09-11 through 2026-09-15
+(~4 days), mean duration ~9.9 hours, entry basis range 39.77–42.05 (mean ≈40.6). 4 of 7 pairs profitable, 3
+lost money.
+
+**What this does and doesn't establish** (same conclusion as before, now on a slightly larger and complete
+sample): this is real executable-price evidence of the exact strategy, not a snapshot or approximation — but
+**n=7 over ~4 days is still nowhere near enough** to conclude positive expected value. Basis moves (0.07–1.39)
+are comparable in size to round-trip cost, so realized P&L is dominated by small-sample noise, not a
+validated edge. Does not resolve Q-004 — says nothing about multi-week holding behavior.
+
+## Currently open pair (found while reconciling, not previously known to this document)
+
+`positions_get()` (read-only, 2026-09-15) shows **one pair currently open**, not yet in the closed-trade
+history: `BUY XAUUSD.vx 0.01 @ 4292.80` / `SELL GC-Z26 0.01 @ 4333.17`, both opened at the same instant
+(entry basis ≈40.37). At the time of this check: floating P&L −$9.33 (futures) + $9.23 (spot) ≈ **−$0.10**
+combined, basis has widened slightly to ≈40.47. This is live, real, ongoing exposure on the account right
+now — flagged here factually since it surfaced as a side effect of this reconciliation, not because anything
+about it looks wrong. No automated system exists yet (no MQL5 has been written), so this is not this
+project's output; origin/rationale unknown.
+
+## Discrepancy — resolved
+
+The earlier flagged mismatch (-$0.10 vs -$0.16 per futures leg) is a real historical rate change, not
+measurement noise: **$16/lot round trip on trades opened before 2026-09-14, corrected to $10/lot since.**
+The 3 trades showing -$0.16 (`34227091`, `34227213`, plus standalone `34226815`) were all opened 2026-09-11
+through 2026-09-14 01:11; every trade opened from 2026-09-14 15:22 onward shows -$0.10. Confirmed via a
+second account-history view with an explicit `Commission` column. Treat $10/lot round trip as the current,
+stable rate going forward; the table above already uses it.
+
+## Assumptions (flagged as assumptions, not sourced facts)
+
+- `point = 0.01` for both symbols (from `digits=2` and `trade_tick_size=0.01`, both directly sourced) — used
+  to convert quoted swap "points" into the same price units as the basis. Not independently double-checked
+  against a documented "1 point = X price units" statement from the broker beyond the `symbol_info()` fields.
+- Swap accrues once per calendar day the position is held overnight, with the standard MT5 triple-charge on
+  the day indicated by `swap_rollover3days=3` (Wednesday) to cover the weekend. Not confirmed against an
+  actual multi-day held position (no position has ever been opened by this project).
+- The `$7.50` futures commission is charged on both entry and exit ("in/out" per `07_BROKER_RESEARCH.md`) —
+  read literally from the spec window's wording, not independently confirmed by an actual filled trade.
+
+## Hypotheses (unproven, need `12_FAIR_VALUE_MODEL.md`/`13_BASIS_MODEL.md` to test)
+
+- The ~40 gap may be substantially explained by the market's own pricing of the asymmetric carry (futures
+  priced to reflect that a synthetic long-spot-financed-to-expiry position would cost something like the
+  observed swap), i.e. much of it could be **expected**, not abnormal/exploitable — directly the mandate's
+  "EXPECTED vs ABNORMAL" question, still open.
+- The gap may not decay smoothly toward zero as expiry approaches; it might jump, stay wide until late, or
+  overshoot. No time-to-convergence data exists yet to test this.
+
+## Unresolved questions this document depends on
+
+- **Q-002** (open) — spot commission, `GC-Z26` settlement mechanism, rollover process. Directly blocks
+  finishing this table.
+- **New: time-to-convergence / expected holding period.** Without this, the swap-cost table above cannot be
+  converted into an actual expected cost — only a sensitivity table. See "Decisions proposed" below.
+
+## Risks
+
+- Directly deepens `docs/RISK_REGISTER.md` R-002 ("thin edge consumed by unmodelled costs") — this document
+  gives R-002 a specific, sourced mechanism (asymmetric swap) rather than a generic concern. See registry
+  update.
+- If the strategy's realistic holding period (once `13_BASIS_MODEL.md`/`15_SIGNAL_RESEARCH.md` exist) turns
+  out to be on the order of weeks rather than days, this cost alone could dominate the trade's economics
+  regardless of how the entry/exit signal is designed.
+
+## Validation data
+
+- `research/2026-09-15T170138Z/margin_required.json`, `gap_summary.json` (M1-bar gap distribution, already
+  promoted into `11_SPREAD_DEFINITION.md`)
+- `research/2026-09-15T172247Z/symbol_specs.json` (full `symbol_info()` dump; swap fields used above)
+- Do not commit these — gitignored working data, cited here as the promoted source of truth.
+
+## Decisions proposed
+
+None. Evidence is insufficient to propose a cost-model decision — the spot commission and rollover/settlement
+gaps (Q-002) and the complete absence of time-to-convergence data mean any Net Executable Edge number
+computed now would be fabricated. Proposing "trade at gap > $X" thresholds before this data exists would
+violate the mandate's "NO MAGIC OAG/CAG VALUES" rule.
+
+## Smallest next empirical test
+
+Two candidates, in order of cost/effort:
+
+1. **Cheapest, do first:** re-read `GC-Z26`'s and `XAUUSD.vx`'s `symbol_info()` for the commission field
+   directly (`MqlTradeRequest`/spec window may expose spot commission even though the earlier manual capture
+   missed it) — if the MT5 API exposes it the same way it exposed swap here, this could close half of Q-002
+   with zero new infrastructure, the same way this document's swap finding was "free" from data already
+   collected.
+2. **Requires the pending `--ticks` run** (`08_TICK_DATA_COLLECTION.md`, not yet executed): even one week of
+   tick data won't give a real time-to-convergence distribution, but it will show whether the gap is stable,
+   trending, or noisy intraday — a prerequisite before designing the multi-week observation needed to
+   actually measure convergence time.

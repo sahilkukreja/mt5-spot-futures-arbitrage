@@ -32,6 +32,7 @@ Output:
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from dataclasses import dataclass
@@ -231,12 +232,73 @@ def main() -> None:
         print("These are working data (gitignored) -- review them, then hand-transcribe")
         print("any conclusion into docs/01_research/07_BROKER_RESEARCH.md and")
         print("docs/02_quant/11_SPREAD_DEFINITION.md yourself. Do not commit this folder's contents.")
+        print("\nNote: this default run provides M1 bar evidence only. For executable bid/ask")
+        print("evidence, use: python tools/mt5_data_collector.py --ticks")
     finally:
         disconnect()
 
 
-if __name__ == "__main__":
-    main()
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Read-only MT5 research collector for VPFX gold spot vs futures. "
+            "Use the default mode for a first-pass gap study or --ticks for executable "
+            "bid/ask evidence."
+        )
+    )
+    parser.add_argument(
+        "--ticks",
+        action="store_true",
+        help="Collect true bid/ask tick history and compute the synchronized executable basis.",
+    )
+    parser.add_argument(
+        "--evidence",
+        action="store_true",
+        help="Alias for --ticks; intended for evidence collection before documentation review.",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=None,
+        help="Override the lookback window for the tick-history run (default: 7 days).",
+    )
+    parser.add_argument(
+        "--tolerance-ms",
+        type=int,
+        default=None,
+        help="Override the bid/ask merge tolerance in milliseconds for the tick-based basis run.",
+    )
+    parser.add_argument(
+        "--pairs",
+        action="store_true",
+        help=(
+            "Reconstruct closed spot/futures trade pairs from account deal history "
+            "(read-only, via history_deals_get) and compute entry/exit basis and P&L "
+            "for each -- expands on manual review of the History tab."
+        ),
+    )
+    parser.add_argument(
+        "--pair-lookback-days",
+        type=int,
+        default=180,
+        help="How far back to search deal history for --pairs (default: 180 days).",
+    )
+    parser.add_argument(
+        "--pair-tolerance-seconds",
+        type=int,
+        default=300,
+        help="Max time gap (seconds) between a spot and futures open to still count as one pair.",
+    )
+    return parser.parse_args()
+
+
+# NOTE: dispatch happens in the single `if __name__ == "__main__":` block at the
+# bottom of this file, after every mode function (main, _main_with_ticks,
+# _main_with_pairs) is defined. An earlier version of this file had a second,
+# duplicate __main__ block here that called `_main_with_ticks()` before that
+# function existed in module execution order -- calling `--ticks` would have
+# raised NameError. Never triggered in practice (only the default mode has been
+# run so far), but real. Removed; see the bottom of the file for the only dispatch.
 
 
 # ---- Tick data collection (executable bid/ask per tick) --------------------------
@@ -490,12 +552,195 @@ def _main_with_ticks() -> None:
         disconnect()
 
 
+# ---- Paired-trade reconciliation (closed spot+futures pairs from deal history) ---
+#
+# Manual review of the account's History tab (2026-09-15) found that several
+# GC-Z26 trades were not standalone -- they were opened at the same instant as a
+# matching XAUUSD.vx fill in the opposite direction: real, already-executed
+# instances of this project's convergence trade. That review only covered the
+# rows visible in two screenshots. This section pulls the FULL deal history via
+# mt5.history_deals_get() (read-only -- no order is placed, checked, or modified)
+# and reconstructs every matching pair automatically, so the sample isn't capped
+# by what happened to be on screen.
+#
+# Each closed MT5 position produces at least two deal records: an entry deal
+# (DEAL_ENTRY_IN) and an exit deal (DEAL_ENTRY_OUT), linked by position_id. This
+# groups deals by position_id first to get one row per closed trade, THEN matches
+# spot trades to futures trades by opposite direction, equal volume, and open
+# time within a tolerance window.
+
+
+def collect_closed_trades(symbol: str, from_dt: datetime, to_dt: datetime) -> "pd.DataFrame":
+    """
+    Pull closed-trade history for one symbol via history_deals_get() (read-only).
+    Groups raw deals by position_id and keeps only positions with exactly one
+    entry (IN) deal and one exit (OUT) deal -- i.e. simple, fully-closed trades.
+    Positions with partial closes / multiple in-out legs are returned separately
+    as "unhandled" rows rather than silently merged or dropped.
+
+    Returns a DataFrame with columns: position_id, symbol, direction (BUY/SELL),
+    volume, open_time, open_price, close_time, close_price, commission (sum of
+    both deals'), swap (sum), profit (sum), unhandled (bool).
+    """
+    raw = mt5.history_deals_get(from_dt, to_dt, group=symbol)
+    if raw is None or len(raw) == 0:
+        return pd.DataFrame(columns=[
+            "position_id", "symbol", "direction", "volume", "open_time", "open_price",
+            "close_time", "close_price", "commission", "swap", "profit", "unhandled",
+        ])
+
+    df = pd.DataFrame([d._asdict() for d in raw])
+    df = df[df["symbol"] == symbol].copy()
+
+    rows = []
+    for pid, grp in df.groupby("position_id"):
+        in_rows = grp[grp["entry"] == mt5.DEAL_ENTRY_IN]
+        out_rows = grp[grp["entry"] == mt5.DEAL_ENTRY_OUT]
+        if len(in_rows) == 1 and len(out_rows) == 1:
+            in_row, out_row = in_rows.iloc[0], out_rows.iloc[0]
+            rows.append({
+                "position_id": pid,
+                "symbol": symbol,
+                "direction": "BUY" if in_row["type"] == mt5.DEAL_TYPE_BUY else "SELL",
+                "volume": in_row["volume"],
+                "open_time": pd.to_datetime(in_row["time"], unit="s", utc=True),
+                "open_price": in_row["price"],
+                "close_time": pd.to_datetime(out_row["time"], unit="s", utc=True),
+                "close_price": out_row["price"],
+                "commission": in_row["commission"] + out_row["commission"],
+                "swap": in_row["swap"] + out_row["swap"],
+                "profit": in_row["profit"] + out_row["profit"],
+                "unhandled": False,
+            })
+        else:
+            # Partial close, multiple legs on one position, or still-open position
+            # caught mid-history. Flag rather than guess.
+            rows.append({
+                "position_id": pid, "symbol": symbol, "direction": None, "volume": None,
+                "open_time": None, "open_price": None, "close_time": None, "close_price": None,
+                "commission": None, "swap": None, "profit": None, "unhandled": True,
+            })
+    return pd.DataFrame(rows)
+
+
+def reconcile_pairs(
+    spot_trades: "pd.DataFrame",
+    fut_trades: "pd.DataFrame",
+    tolerance_seconds: int = 300,
+) -> "tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]":
+    """
+    Greedy nearest-time match: for each spot trade (earliest open_time first),
+    find the closest unused futures trade with equal volume, opposite direction,
+    and open_time within tolerance_seconds. Returns (pairs, unmatched_spot,
+    unmatched_futures) -- unmatched trades are reported, never silently dropped.
+
+    entry_basis / exit_basis follow 02_quant/11_SPREAD_DEFINITION.md exactly:
+      CONVERGENCE (spot BUY / futures SELL): basis = futures_price - spot_price
+      REVERSE     (spot SELL / futures BUY): basis = spot_price - futures_price
+    """
+    spot = spot_trades[~spot_trades["unhandled"]].sort_values("open_time").reset_index(drop=True)
+    fut = fut_trades[~fut_trades["unhandled"]].sort_values("open_time").reset_index(drop=True)
+
+    used_fut_idx: set = set()
+    pairs = []
+    unmatched_spot_rows = []
+
+    for _, srow in spot.iterrows():
+        best_idx, best_dt = None, None
+        for j, frow in fut.iterrows():
+            if j in used_fut_idx:
+                continue
+            if frow["volume"] != srow["volume"] or frow["direction"] == srow["direction"]:
+                continue
+            dt = abs((srow["open_time"] - frow["open_time"]).total_seconds())
+            if dt <= tolerance_seconds and (best_dt is None or dt < best_dt):
+                best_idx, best_dt = j, dt
+
+        if best_idx is None:
+            unmatched_spot_rows.append(srow.to_dict())
+            continue
+
+        frow = fut.iloc[best_idx]
+        used_fut_idx.add(best_idx)
+        convergence = srow["direction"] == "BUY"  # buy spot / sell futures
+        entry_basis = (frow["open_price"] - srow["open_price"]) if convergence else (srow["open_price"] - frow["open_price"])
+        exit_basis = (frow["close_price"] - srow["close_price"]) if convergence else (srow["close_price"] - frow["close_price"])
+        pairs.append({
+            "spot_position_id": srow["position_id"],
+            "fut_position_id": frow["position_id"],
+            "direction": "CONVERGENCE (buy spot/sell fut)" if convergence else "REVERSE (sell spot/buy fut)",
+            "volume": srow["volume"],
+            "open_time_skew_seconds": best_dt,
+            "entry_basis": round(entry_basis, 4),
+            "exit_basis": round(exit_basis, 4),
+            "basis_change": round(exit_basis - entry_basis, 4),
+            "duration_hours": round((frow["close_time"] - frow["open_time"]).total_seconds() / 3600, 2),
+            "spot_profit": srow["profit"], "fut_profit": frow["profit"],
+            "spot_commission": srow["commission"], "fut_commission": frow["commission"],
+            "net_pnl": round(srow["profit"] + frow["profit"] + srow["commission"] + frow["commission"], 4),
+        })
+
+    unmatched_fut_rows = fut.iloc[[j for j in range(len(fut)) if j not in used_fut_idx]]
+    return pd.DataFrame(pairs), pd.DataFrame(unmatched_spot_rows), unmatched_fut_rows
+
+
+def _main_with_pairs(lookback_days: int, tolerance_seconds: int) -> None:
+    """
+    Read-only: reconstructs every closed spot/futures pair from account deal
+    history and writes the reconciliation to research/<timestamp>/. Never calls
+    order_send/order_check. Does not place, modify, or close anything.
+    """
+    connect()
+    try:
+        run_dir = OUTPUT_ROOT / datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        utc_to = datetime.now(tz=timezone.utc)
+        utc_from = utc_to - timedelta(days=lookback_days)
+
+        print(f"\n--- Closed-trade history, last {lookback_days} days ---")
+        spot_trades = collect_closed_trades(SPOT_SYMBOL, utc_from, utc_to)
+        fut_trades = collect_closed_trades(FUTURES_SYMBOL, utc_from, utc_to)
+        print(f"  {SPOT_SYMBOL}: {len(spot_trades)} closed positions "
+              f"({int(spot_trades['unhandled'].sum())} unhandled)")
+        print(f"  {FUTURES_SYMBOL}: {len(fut_trades)} closed positions "
+              f"({int(fut_trades['unhandled'].sum())} unhandled)")
+        spot_trades.to_csv(run_dir / f"closed_trades_{SPOT_SYMBOL}.csv", index=False)
+        fut_trades.to_csv(run_dir / f"closed_trades_{FUTURES_SYMBOL}.csv", index=False)
+
+        print(f"\n--- Pair reconciliation (tolerance={tolerance_seconds}s) ---")
+        pairs, unmatched_spot, unmatched_fut = reconcile_pairs(spot_trades, fut_trades, tolerance_seconds)
+        pairs.to_csv(run_dir / "reconciled_pairs.csv", index=False)
+        unmatched_spot.to_csv(run_dir / "unmatched_spot_trades.csv", index=False)
+        unmatched_fut.to_csv(run_dir / "unmatched_futures_trades.csv", index=False)
+
+        print(f"  Matched pairs: {len(pairs)}")
+        print(f"  Unmatched spot trades: {len(unmatched_spot)}")
+        print(f"  Unmatched futures trades: {len(unmatched_fut)}")
+        if len(pairs):
+            print(f"  Net P&L across matched pairs: {pairs['net_pnl'].sum():.2f}")
+            print(pairs.to_string(index=False))
+
+        print(f"\nAll outputs written to: {run_dir}")
+        print(
+            "NEXT STEP: review reconciled_pairs.csv and the unmatched_* files, then\n"
+            "hand-transcribe any material change into docs/02_quant/14_TRANSACTION_COST_MODEL.md\n"
+            "and docs/OPEN_QUESTIONS.md Q-004. Do NOT commit the research/ folder contents."
+        )
+    finally:
+        disconnect()
+
+
 if __name__ == "__main__":
-    # Switch to _main_with_ticks() once the Windows VMware environment is ready
-    # (see docs/01_research/08_TICK_DATA_COLLECTION.md for setup steps).
-    # Until then, main() (M1-bar only) still works without VMware.
-    import sys
-    if "--ticks" in sys.argv:
+    args = parse_args()
+    if args.days is not None:
+        TICK_HISTORY_DAYS = args.days
+    if args.tolerance_ms is not None:
+        TICK_SYNC_TOLERANCE_MS = args.tolerance_ms
+
+    if args.ticks or args.evidence:
         _main_with_ticks()
+    elif args.pairs:
+        _main_with_pairs(args.pair_lookback_days, args.pair_tolerance_seconds)
     else:
         main()

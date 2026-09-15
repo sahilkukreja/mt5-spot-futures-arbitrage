@@ -1,6 +1,8 @@
 # Data Requirements
 
-Status: IN PROGRESS — collection method specified (see `docs/01_research/08_TICK_DATA_COLLECTION.md`); distributional study not yet done
+Status: IN PROGRESS — collection method specified and **executed** (see `docs/01_research/08_TICK_DATA_COLLECTION.md`);
+tick-level distributional study done 2026-09-15 (707,580 synchronized rows, 7 days), promoted into
+`11_SPREAD_DEFINITION.md`. Remaining: multi-week time-to-convergence data (Q-004) and fair-value decomposition.
 
 ## Purpose
 Define exactly what tick/quote/trade data is needed to study the spread before any modeling begins.
@@ -17,11 +19,15 @@ hand-transcribe anything decision-relevant into this document and `11_SPREAD_DEF
 
 **Platform requirement:** the MetaTrader5 Python package is Windows-only. On macOS: run inside a Windows
 VMware Fusion VM with MT5 installed. Full setup and validation steps are in
-`docs/01_research/08_TICK_DATA_COLLECTION.md`.
+`docs/01_research/08_TICK_DATA_COLLECTION.md`. **Correction (2026-09-15):** the actual `--ticks` run happened
+directly on a native Windows machine, not a macOS+VMware setup — the VMware option in `08_TICK_DATA_COLLECTION.md`
+was written against an assumption that turned out not to apply in practice. No VM was needed.
 
 ## Required granularity (tick vs bar) and history length
 - The script's default mode (`python tools/mt5_data_collector.py`) pulls **M1 bar closes** as a first-pass
-  approximation, explicitly flagged as not true executable bid/ask.
+  approximation, explicitly flagged as not true executable bid/ask. Run 2026-09-15, 6,883 bars/7 days;
+  results promoted into `11_SPREAD_DEFINITION.md`. This validates the collection pipeline end-to-end but
+  does not satisfy the bid/ask requirement below.
 - The `--ticks` mode (`python tools/mt5_data_collector.py --ticks`) uses `mt5.copy_ticks_range()` to pull
   true **tick-level bid/ask** for both symbols and merges them into a synchronized executable-basis series
   via `pd.merge_asof()` (tolerance: 500 ms). This is the required granularity before any conclusion can

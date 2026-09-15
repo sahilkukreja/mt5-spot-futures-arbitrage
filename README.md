@@ -54,6 +54,25 @@ Skills under `.claude/skills/` gate and route work by phase:
 Do not write MQL5 or start implementation before `docs/01_research/` and `docs/02_quant/` first-milestone
 documents are complete and reviewed (see `docs/PROJECT_MANDATE.md` → "FIRST DEVELOPMENT MILESTONE").
 
+## Parameter and future-scope policy
+
+All unresolved questions remain parameterized research questions. A parameter must have a defined unit,
+source, validation method, uncertainty, and status before it can become a design or runtime value. Do not
+replace missing evidence with a hardcoded threshold, timeout, multiplier, or assumed broker behavior.
+
+Current examples include:
+
+- quote-staleness and cross-leg skew thresholds;
+- orphan-leg timeout and emergency-flatten timing;
+- margin-stress multiplier and account-level safety limits;
+- time-to-convergence and maximum holding-period parameters;
+- settlement, rollover, price-source, slippage, and execution-latency inputs.
+
+Calibration, automated execution, broader broker support, multi-pair scaling, adaptive sizing, and other
+strategy enhancements are future scope. They may be designed as interfaces or test scenarios, but they must
+remain marked `UNCALIBRATED`, `UNRESOLVED`, or `FUTURE` until the required evidence and review gates pass.
+Research outputs can inform these parameters; they do not approve live values or live trading.
+
 ## Capital and safety constraints (non-negotiable)
 
 - Experimental capital ceiling: **USD 1,000**. Capital preservation outranks return.
