@@ -41,14 +41,26 @@ runtime flag that could be misconfigured or bypassed.
 ## Verification
 
 - **Compiled successfully** with MetaEditor64 (`C:\Program Files\MetaTrader 5 IC Markets Global\MetaEditor64.exe
-  /compile`), twice, after two rounds of fixes: a missing-return-path compile error, and two tests (T4, T6)
-  strengthened after review because the first versions asserted a weaker invariant than the design document
-  requires.
-- **Not yet executed end-to-end.** Attaching it to a chart and reading the actual PASS/FAIL output has not
-  been done in this session — a headless deploy attempt was stopped rather than escalated into requesting
-  elevated filesystem permissions or hunting through a hashed per-user data folder for a self-test artifact.
-  The logic has been reviewed carefully scenario-by-scenario, but "reviewed" is not "run", and this file should
-  not be treated as validated until someone actually attaches it and confirms 12/12 PASS.
+  /compile`), 0 errors, across four rounds.
+- **Executed end-to-end by the account owner, twice.** First real run: **8/12 PASS, 4 FAIL** (T4, T6, T7, T8).
+  Both failure clusters were real bugs, not flaky tests:
+  - **T6, T7, T8** — `StartupReconciling()` tried to open the journal file for reading while `OnInit`'s own
+    handle still held it open for writing; MQL5 returned `INVALID_HANDLE` for the second open regardless of
+    `FILE_SHARE_READ` on both sides, producing the misleading "no journal file" note on a file that
+    demonstrably existed. Fixed by having `StartupReconciling()` close the write handle before reading and
+    reopen it afterward — which is also more faithful to what it's testing, since a real restart holds no
+    handle to begin with.
+  - **T4** — the test itself was wrong, not the harness: it pre-seeded the simulated broker ledger *before*
+    calling the scenario, so the top-of-loop idempotency check (meant for post-restart resumption) adopted the
+    fill without any send ever happening, which doesn't exercise the ack-timeout-then-reconcile path the test
+    claims to cover. Fixed by attaching the fill to the `SIM_ACK_TIMEOUT` event itself, so it only becomes
+    visible to the ledger as a side effect of processing that specific attempt's result — strictly after the
+    send has already happened and been counted.
+  - Fixes committed, recompiled clean (0 errors), **not yet re-run** — the account owner's second confirmed
+    run should show 12/12 PASS; if it doesn't, that's a new, real finding and should be reported rather than
+    assumed away.
+- Nothing here was fixed by weakening an assertion. Both fixes made the corresponding test *more* strict about
+  the invariant it claims to prove, not less.
 
 ## How to run it
 

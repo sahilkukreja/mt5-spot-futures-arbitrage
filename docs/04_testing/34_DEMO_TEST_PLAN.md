@@ -421,8 +421,9 @@ written until a fresh `/arb-risk-review` and `/arb-hostile-review` are recorded 
 specifically** (`35_1000_USD_LIVE_TEST_PLAN.md` §2) and D-008 is accepted. This exception authorizes exactly
 one file's existence and nothing about what it may be attached to or what its output may be used for.
 
-**Verification status:** compiled successfully with MetaEditor64, 0 errors, after fixing one real compile
-error and strengthening two tests (T4, T6) that initially asserted a weaker invariant than this document
-requires. **Not yet run end-to-end** — see `measurement_harness/README.md` → "Verification" for exactly what
-that means and what running it yourself involves (attach to any chart, any account or none; it cannot touch
-one either way).
+**Verification status, updated 2026-09-16:** the account owner ran it. First run: **8/12 PASS, 4 FAIL**
+(T4, T6, T7, T8) — two real bugs, not flaky tests: a file-handle conflict in `StartupReconciling()` (closing
+its own write handle before reading fixes it, and is also more faithful to a real restart), and a test (T4)
+that pre-seeded the broker ledger before the simulated send happened, never actually exercising the
+ack-timeout-then-reconcile path it claimed to test. Both fixed, recompiled clean (0 errors), **awaiting
+re-run** to confirm 12/12. See `measurement_harness/README.md` → "Verification" for the full account.

@@ -282,10 +282,25 @@ ReconcileResult StartupReconciling(const string run_id, int pair_seq)
    r.resumed_state = STATE_IDLE;
    r.note = "";
 
+   // A real restart holds no handle to the journal at all -- our own
+   // in-process write handle is exactly the thing that would be gone.
+   // Close it before reading (MQL5 will not open a second handle to the
+   // same file while this one is held, even with FILE_SHARE_READ on
+   // both sides), and reopen it for append afterward if the run
+   // continues. This is what actually caused T7/T8 to report "no
+   // journal file" on the first execution: the file existed, but a
+   // second FileOpen against it while OnInit's own handle was still
+   // open returned INVALID_HANDLE.
+   bool reopen_after = (g_journal_handle != INVALID_HANDLE);
+   if(reopen_after)
+      JournalClose();
+
    int h = FileOpen(JOURNAL_FILE, FILE_READ|FILE_TXT|FILE_ANSI|FILE_SHARE_READ);
    if(h == INVALID_HANDLE)
      {
       r.note = "no journal file -- nothing to reconcile";
+      if(reopen_after)
+         JournalOpenForAppend();
       return r;
      }
 
@@ -334,6 +349,8 @@ ReconcileResult StartupReconciling(const string run_id, int pair_seq)
      {
       r.ok = false;
       r.note = "journal claims leg1 filled but broker ledger disagrees";
+      if(reopen_after)
+         JournalOpenForAppend();
       return r;
      }
 
@@ -365,10 +382,14 @@ ReconcileResult StartupReconciling(const string run_id, int pair_seq)
         {
          r.ok = false;
          r.note = "broker position with no matching journal entry: " + k;
+         if(reopen_after)
+            JournalOpenForAppend();
          return r;
         }
      }
 
+   if(reopen_after)
+      JournalOpenForAppend();
    return r;
   }
 
@@ -488,6 +509,14 @@ ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
          // anything else -- this is the specific defence in section 7.
          JournalWrite(run_id, pair_seq, leg_id, attempt, symbol, direction, volume,
                       STATE_LEG1_SUBMITTED, clock, clock, clock, 0, "ACK_TIMEOUT", 0, 0, key);
+         // A scenario can script "the send actually reached the broker
+         // and filled; only the ack was lost" by attaching a fill price
+         // to a SIM_ACK_TIMEOUT event. That fill becomes visible to the
+         // broker ledger only now -- as a side effect of THIS attempt's
+         // send, which g_distinct_sends already counted above -- never
+         // before the send happened. This is what T4 exercises.
+         if(code == SIM_ACK_TIMEOUT && ev_price > 0 && !BrokerHasKey(key))
+            BrokerLedgerAdd(key, ev_price, ev_volume > 0 ? ev_volume : volume);
          if(BrokerHasKey(key))
            {
             int idx = BrokerLedgerFind(key);
@@ -746,16 +775,14 @@ void Test_T4_Leg2AckTimeoutNoDuplicate()
    PairScenario sc;
    ArrayResize(sc.leg1_events, 1); sc.leg1_events[0] = MakeEvent(SIM_DONE, 4340.00);
    // Leg2 attempt 1 times out from the caller's point of view (no ack
-   // arrives)...
-   ArrayResize(sc.leg2_events, 1); sc.leg2_events[0] = MakeEvent(SIM_ACK_TIMEOUT);
+   // arrives)... but the send actually reached the broker and filled;
+   // only the acknowledgement was lost. The fill price attached to this
+   // SIM_ACK_TIMEOUT event is what ExecuteLeg records to the ledger --
+   // and only at the point it processes THIS attempt's result, i.e.
+   // strictly after the send has already happened and been counted.
+   // This is the precise ambiguity section 7 exists for.
+   ArrayResize(sc.leg2_events, 1); sc.leg2_events[0] = MakeEvent(SIM_ACK_TIMEOUT, 4380.00, 0.01);
    sc.restart_after_leg1_filled = false; sc.kill_switch_during_hedge = false;
-
-   // ...but the send actually reached the broker and filled; only the
-   // acknowledgement was lost. Pre-seed the ledger under the EXACT key
-   // attempt 1 will use, so the reconciliation check inside ExecuteLeg
-   // must find it. This is the precise ambiguity section 7 exists for.
-   string leg2_attempt1_key = MakeIdemKey("T4", 1, 2, 1);
-   BrokerLedgerAdd(leg2_attempt1_key, 4380.00, 0.01);
 
    int before = g_distinct_sends;
    ENUM_OUTCOME o = RunPairAttempt("T4", 1, sc);

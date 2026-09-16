@@ -15,6 +15,11 @@ __MACOSX/
 *.dxvk-cache
 *.dat
 
+# measurement_harness/ run outputs -- transient, overwritten every run,
+# never source of truth (see measurement_harness/README.md)
+measurement_harness/*.csv
+measurement_harness/*.log
+
 # Broker/account exports and reports (may contain account identifiers)
 *.xlsx
 ReportHistory-*.xlsx
