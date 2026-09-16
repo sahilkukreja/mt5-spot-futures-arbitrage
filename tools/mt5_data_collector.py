@@ -10,6 +10,10 @@ Answers, from live broker data instead of guesswork:
   - A real distribution of the executable spread/gap between the two legs (mean,
     median, std, percentiles) from historical bars, instead of the two point-in-time
     snapshots currently in docs/02_quant/11_SPREAD_DEFINITION.md.
+  - With --pairs: reconciled closed trade pairs AND currently-open (censored) pairs,
+    merged into a persistent cross-run log at research/pair_log.csv (see
+    update_pair_log()) so the Q-004 time-to-convergence sample keeps growing across
+    repeated runs instead of resetting to one lookback window each time.
 
 Safety:
   - Every MT5 call here is read-only or a calculation. Nothing in this script can open,
@@ -684,6 +688,164 @@ def reconcile_pairs(
     return pd.DataFrame(pairs), pd.DataFrame(unmatched_spot_rows), unmatched_fut_rows
 
 
+# ---- Currently-open positions and the persistent cross-run pair log (Q-004) -------
+#
+# reconcile_pairs() above only sees CLOSED trades, reset to whatever the lookback
+# window covers each run -- the realized-pair sample never grows beyond one run's
+# window. These functions add: (1) a read-only snapshot of currently-open positions
+# via positions_get(), paired the same way closed trades are; (2) a persistent,
+# append-across-runs log keyed by a stable pair_id (just the two MT5 position_ids,
+# which are already globally unique and stable -- no invented ID scheme needed), so
+# repeated runs accumulate observations instead of resetting to whatever a single
+# lookback window contains. Still fully read-only: no order_send/order_check.
+
+PAIR_LOG_PATH = OUTPUT_ROOT / "pair_log.csv"
+PAIR_LOG_COLUMNS = [
+    "pair_id", "spot_position_id", "fut_position_id", "direction", "volume",
+    "entry_basis", "exit_basis", "basis_change", "duration_hours", "net_pnl",
+    "status", "first_seen_utc", "last_updated_utc",
+]
+
+
+def collect_open_positions(symbols: set) -> "pd.DataFrame":
+    """Read-only positions_get() snapshot for the given symbols. Never modifies anything."""
+    positions = mt5.positions_get()
+    if positions is None:
+        positions = ()
+    now = datetime.now(timezone.utc)
+    rows = []
+    for p in positions:
+        row = p._asdict()
+        if row.get("symbol") not in symbols:
+            continue
+        opened = datetime.fromtimestamp(row["time"], tz=timezone.utc)
+        rows.append({
+            "position_id": row.get("ticket"),
+            "symbol": row.get("symbol"),
+            "direction": "BUY" if row.get("type") == mt5.POSITION_TYPE_BUY else "SELL",
+            "volume": row.get("volume"),
+            "open_time": opened,
+            "open_price": row.get("price_open"),
+            "price_current": row.get("price_current"),
+            "profit": row.get("profit"),
+            "duration_hours": round((now - opened).total_seconds() / 3600, 4),
+        })
+    return pd.DataFrame(rows, columns=[
+        "position_id", "symbol", "direction", "volume", "open_time",
+        "open_price", "price_current", "profit", "duration_hours",
+    ])
+
+
+def match_open_pairs(
+    open_positions: "pd.DataFrame",
+    spot_symbol: str = SPOT_SYMBOL,
+    futures_symbol: str = FUTURES_SYMBOL,
+    tolerance_seconds: int = 300,
+) -> "tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]":
+    """
+    Same greedy nearest-time matching as reconcile_pairs(), applied to currently-OPEN
+    positions instead of closed ones -- these become "censored" observations for
+    Q-004 (still accruing holding time, no exit yet). Returns (matched, unmatched_spot,
+    unmatched_futures); an unmatched single-leg open position is a live, real R-003
+    candidate (an apparently orphaned leg) and must not be silently dropped.
+    """
+    empty = pd.DataFrame(columns=[
+        "pair_id", "spot_position_id", "fut_position_id", "direction", "volume",
+        "open_time_skew_seconds", "entry_basis", "duration_hours_at_snapshot", "status",
+    ])
+    if open_positions.empty:
+        return empty, pd.DataFrame(), pd.DataFrame()
+
+    spot = open_positions[open_positions["symbol"] == spot_symbol].sort_values("open_time").reset_index(drop=True)
+    fut = open_positions[open_positions["symbol"] == futures_symbol].reset_index(drop=True)
+
+    used_fut_idx: set = set()
+    rows = []
+    unmatched_spot_rows = []
+    for _, srow in spot.iterrows():
+        best_idx, best_dt = None, None
+        for j, frow in fut.iterrows():
+            if j in used_fut_idx:
+                continue
+            if frow["volume"] != srow["volume"] or frow["direction"] == srow["direction"]:
+                continue
+            dt = abs((srow["open_time"] - frow["open_time"]).total_seconds())
+            if dt <= tolerance_seconds and (best_dt is None or dt < best_dt):
+                best_idx, best_dt = j, dt
+        if best_idx is None:
+            unmatched_spot_rows.append(srow.to_dict())
+            continue
+        frow = fut.iloc[best_idx]
+        used_fut_idx.add(best_idx)
+        convergence = srow["direction"] == "BUY"
+        entry_basis = (frow["open_price"] - srow["open_price"]) if convergence else (srow["open_price"] - frow["open_price"])
+        rows.append({
+            "pair_id": f"{srow['position_id']}_{frow['position_id']}",
+            "spot_position_id": srow["position_id"],
+            "fut_position_id": frow["position_id"],
+            "direction": "CONVERGENCE (buy spot/sell fut)" if convergence else "REVERSE (sell spot/buy fut)",
+            "volume": srow["volume"],
+            "open_time_skew_seconds": best_dt,
+            "entry_basis": round(entry_basis, 4),
+            "duration_hours_at_snapshot": max(srow["duration_hours"], frow["duration_hours"]),
+            "status": "open",
+        })
+    unmatched_fut_rows = fut.iloc[[j for j in range(len(fut)) if j not in used_fut_idx]]
+    return pd.DataFrame(rows), pd.DataFrame(unmatched_spot_rows), unmatched_fut_rows
+
+
+def update_pair_log(
+    closed_pairs: "pd.DataFrame",
+    open_pairs: "pd.DataFrame",
+    log_path: Path = PAIR_LOG_PATH,
+) -> "pd.DataFrame":
+    """
+    Merge this run's closed and currently-open pairs into a persistent CSV keyed by
+    pair_id, so the Q-004 realized-pair sample accumulates across repeated runs
+    instead of resetting to one lookback window each time. `status` transitions
+    open -> closed as a pair's exit is observed; closed is terminal (a later "open"
+    observation for the same pair_id never overwrites a closed row -- that would only
+    happen from a stale/reordered run and must not silently corrupt history). Writes
+    only this CSV; no MT5 call is made here.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    if log_path.exists():
+        log = pd.read_csv(log_path).set_index("pair_id")
+    else:
+        log = pd.DataFrame(columns=PAIR_LOG_COLUMNS).set_index("pair_id")
+
+    for _, row in closed_pairs.iterrows():
+        pid = f"{row['spot_position_id']}_{row['fut_position_id']}"
+        first_seen = log.loc[pid, "first_seen_utc"] if pid in log.index else now
+        log.loc[pid] = {
+            "spot_position_id": row["spot_position_id"], "fut_position_id": row["fut_position_id"],
+            "direction": row["direction"], "volume": row["volume"],
+            "entry_basis": row["entry_basis"], "exit_basis": row["exit_basis"],
+            "basis_change": row["basis_change"], "duration_hours": row["duration_hours"],
+            "net_pnl": row["net_pnl"], "status": "closed",
+            "first_seen_utc": first_seen, "last_updated_utc": now,
+        }
+
+    for _, row in open_pairs.iterrows():
+        pid = row["pair_id"]
+        if pid in log.index and log.loc[pid, "status"] == "closed":
+            continue
+        first_seen = log.loc[pid, "first_seen_utc"] if pid in log.index else now
+        log.loc[pid] = {
+            "spot_position_id": row["spot_position_id"], "fut_position_id": row["fut_position_id"],
+            "direction": row["direction"], "volume": row["volume"],
+            "entry_basis": row["entry_basis"], "exit_basis": None,
+            "basis_change": None, "duration_hours": row["duration_hours_at_snapshot"],
+            "net_pnl": None, "status": "open",
+            "first_seen_utc": first_seen, "last_updated_utc": now,
+        }
+
+    log = log.reset_index().rename(columns={"index": "pair_id"})
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log.to_csv(log_path, index=False)
+    return log
+
+
 def _main_with_pairs(lookback_days: int, tolerance_seconds: int) -> None:
     """
     Read-only: reconstructs every closed spot/futures pair from account deal
@@ -721,11 +883,36 @@ def _main_with_pairs(lookback_days: int, tolerance_seconds: int) -> None:
             print(f"  Net P&L across matched pairs: {pairs['net_pnl'].sum():.2f}")
             print(pairs.to_string(index=False))
 
+        print("\n--- Currently-open positions (censored observations) ---")
+        open_positions = collect_open_positions({SPOT_SYMBOL, FUTURES_SYMBOL})
+        open_pairs, unmatched_open_spot, unmatched_open_fut = match_open_pairs(
+            open_positions, SPOT_SYMBOL, FUTURES_SYMBOL, tolerance_seconds
+        )
+        open_positions.to_csv(run_dir / "open_positions_censored.csv", index=False)
+        open_pairs.to_csv(run_dir / "open_pairs_censored.csv", index=False)
+        print(f"  Open positions: {len(open_positions)}  Matched open pairs: {len(open_pairs)}")
+        if len(unmatched_open_spot) or len(unmatched_open_fut):
+            print(
+                f"  WARNING: {len(unmatched_open_spot)} unmatched open spot leg(s), "
+                f"{len(unmatched_open_fut)} unmatched open futures leg(s) -- a real, live "
+                "single-leg position with no matching opposite-direction leg. This looks like "
+                "an R-003 orphan-leg candidate; verify directly in the terminal."
+            )
+
+        log = update_pair_log(pairs, open_pairs)
+        n_closed_total = int((log["status"] == "closed").sum())
+        n_open_total = int((log["status"] == "open").sum())
+        print(f"\n--- Persistent pair log: {PAIR_LOG_PATH} ---")
+        print(f"  Total tracked pairs across all runs: {len(log)} "
+              f"({n_closed_total} closed, {n_open_total} still open/censored)")
+
         print(f"\nAll outputs written to: {run_dir}")
         print(
             "NEXT STEP: review reconciled_pairs.csv and the unmatched_* files, then\n"
             "hand-transcribe any material change into docs/02_quant/14_TRANSACTION_COST_MODEL.md\n"
-            "and docs/OPEN_QUESTIONS.md Q-004. Do NOT commit the research/ folder contents."
+            "and docs/OPEN_QUESTIONS.md Q-004. The persistent pair_log.csv accumulates across every\n"
+            "run of this tool -- re-run periodically to grow the Q-004 sample beyond one lookback\n"
+            "window. Do NOT commit the research/ folder contents."
         )
     finally:
         disconnect()

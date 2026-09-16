@@ -27,14 +27,19 @@ otherwise refine it as understanding improves.
 ### Q-002: What is the spot leg's commission, and what are price source/settlement/rollover for the futures leg?
 - **Raised:** 2026-09-12
 - **Blocks:** `01_research/07_BROKER_RESEARCH.md` completion, `02_quant/14_TRANSACTION_COST_MODEL.md`
-- **Status:** partially answered 2026-09-15. Confirmed: `XAUUSD.vx` commission is **$0.00** in live deal
-  history; `GC-Z26` commission is **$10 per lot round trip**; at 0.01 lot the futures commission is
-  **$0.10 per completed pair**. Approximate full spread crossing from captured quotes is about **$0.60**
-  per 0.01/0.01 pair (spot spread ≈ $0.30 + futures spread ≈ $0.30 + futures commission ≈ $0.10), not
-  counting swap and slippage. Still open: `XAUUSD.vx` price source, `GC-Z26` settlement mechanism
-  (cash-settled CFD vs. delivery-linked), `GC-Z26` rollover process at/before the 25 Nov 2026 expiry,
-  and confirmation of any broker restriction on holding opposite-direction positions across these two
-  symbols simultaneously.
+- **Status:** partially answered 2026-09-15, further advanced 2026-09-16. Confirmed: `XAUUSD.vx` commission is
+  **$0.00** in live deal history; `GC-Z26` commission is **$10 per lot round trip**; at 0.01 lot the futures
+  commission is **$0.10 per completed pair**. Approximate full spread crossing from captured quotes is about
+  **$0.60** per 0.01/0.01 pair (spot spread ≈ $0.30 + futures spread ≈ $0.30 + futures commission ≈ $0.10), not
+  counting swap and slippage. **New 2026-09-16:** `GC-Z26` settlement mechanism is now resolved —
+  `symbol_info()`'s own `trade_calc_mode` field reads `SYMBOL_CALC_MODE_CFD` (sourced, not the marketing name),
+  confirming a cash-settled CFD, not a delivery-linked contract. Still open: `GC-Z26` rollover *timing/mechanics*
+  (the contract's `expiration_time` field reads 0 despite the description stating "Exp 25 Nov 2026" — no
+  machine-readable expiry exists, only free text); `XAUUSD.vx` true price source (the `exchange: "CME"` field
+  was checked and flagged as unreliable — spot gold isn't CME-listed, this is almost certainly a broker
+  template default, not a genuine disclosure); and confirmation of any broker restriction on holding
+  opposite-direction positions across these two symbols simultaneously (no data found either way). See
+  `02_quant/14_TRANSACTION_COST_MODEL.md` → "Q-002 update (2026-09-16)".
 
 ### Q-003: What are the calibrated values for quote-staleness threshold, orphan-leg timeout, and margin
 stress multiplier?
@@ -51,15 +56,23 @@ stress multiplier?
 ### Q-004: What is the empirical time-to-convergence / expected holding period for the `GC-Z26`/`XAUUSD.vx` gap?
 - **Raised:** 2026-09-15
 - **Blocks:** `02_quant/14_TRANSACTION_COST_MODEL.md` (cannot convert its swap-cost sensitivity table into a
-  real expected cost without this), `13_BASIS_MODEL.md`, and any signal design bounding maximum holding time.
-- **Status:** open with provisional evidence only. The latest run confirms 7 completed pairs, with holding times
-  of roughly 3–13 hours (mean 9.91 hours), 4 profitable and 3 loss-making, and net +$1.57 after commission.
-  This does not answer the empirical time-to-convergence distribution or expected holding period. The latest
-  snapshot found 0 open positions, so it supplied 0 censored observations. Contradiction to preserve: an
-  earlier account reconciliation separately identified one currently-open 8th pair; the latest snapshot may
-  reflect that position having closed, or a different observation state, but it does not resolve the historical
-  censoring discrepancy. The evidence remains too small and too short to support a durable conclusion about
-  multi-week behavior.
+  real expected cost without this), `13_BASIS_MODEL.md`, `17_EXPECTED_VALUE.md`, and any signal design bounding
+  maximum holding time.
+- **Status:** open with provisional evidence only, now from two distinct sources. (1) Realized-pair evidence,
+  unchanged: 7 completed pairs, holding times roughly 3–13 hours (mean 9.91 hours), 4 profitable and 3
+  loss-making, net +$1.57 after commission. (2) **New 2026-09-16:** a tick-level mean-reversion ("decay") proxy
+  — AR(1) half-life of the `convergence_basis` series is ≈112 minutes at a 1-minute resampling grid, growing to
+  ≈25 hours at a 4-hour grid, with 1-minute-series autocorrelation still at 0.60 after 24 hours. This is
+  additional, distinct evidence (statistical persistence of the raw series, not realized trade durations) and
+  does not resolve Q-004 on its own — see `13_BASIS_MODEL.md` for the full analysis and its limitations
+  (contaminated by a slow within-week drift at coarser grids). Both sources point the same direction
+  (intraday-to-single-day resolution is plausible) but neither individually, nor together, is sufficient for a
+  multi-week conclusion. The latest closed-trade snapshot found 0 open positions, so it supplied 0 censored
+  observations. Contradiction to preserve: an earlier account reconciliation separately identified one
+  currently-open 8th pair; the latest snapshot may reflect that position having closed, or a different
+  observation state, but it does not resolve the historical censoring discrepancy. The evidence remains too
+  small and too short (max ~7 days of ticks, max ~13 hours of realized trades) to support a durable conclusion
+  about multi-week behavior.
 
 ## From the project mandate (first milestone)
 
@@ -70,10 +83,14 @@ stress multiplier?
 2. What exact price relationship should we trade? — working answer: `Bid(GC-Z26) − Ask(XAUUSD.vx)` for the
    convergence (sell futures/buy spot) trade — see `02_quant/11_SPREAD_DEFINITION.md`. Not yet validated
    against a real distribution.
-3. What expected edge remains after all costs? — still open, blocked on Q-002. Partial progress: spread +
-   futures commission cost is small (~$0.75, ~2% of the ~$40 gap); the dominant, previously-unmodelled cost is
-   asymmetric swap (spot pays, futures doesn't), which alone can exceed the entire gap over a multi-week
-   holding period — see `14_TRANSACTION_COST_MODEL.md` and Q-004.
+3. What expected edge remains after all costs? — still open. `17_EXPECTED_VALUE.md` (new, 2026-09-16) assembles
+   the mandate's full `TRUE NET EDGE` component list: known costs (spread, commission, swap) are now fully
+   sourced and small relative to the raw spread for near-term holding periods, but entry/exit slippage, latency
+   uncertainty, and the execution-risk buffer remain **unmeasured** (no live execution trial exists yet), and
+   the mandate's own Required Safety Margin is **undefined**. Neither gap can be closed without a bounded
+   Phase 1 demo-execution trial. The dominant *known* cost is still the asymmetric swap (spot pays, futures
+   doesn't), which alone can exceed the entire gap over a multi-week holding period — see
+   `14_TRANSACTION_COST_MODEL.md` and Q-004.
 4. Which broker/instrument structure is suitable? — VPFX `XAUUSD.vx`/`GC-Z26` shown viable on margin and hedge
    ratio (D-001); not yet compared against alternatives, and commission/settlement/rollover unconfirmed (Q-002).
 5. Can a $1,000 account safely support 0.01-lot hedged testing? — **yes on margin** (≈$131 combined at

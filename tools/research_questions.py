@@ -116,30 +116,6 @@ def reference_manifest(urls: list[str], fetch: bool, timeout: float) -> dict[str
     }
 
 
-def serialize_positions(mt5: Any, symbols: set[str]) -> pd.DataFrame:
-    rows: list[dict[str, Any]] = []
-    positions = mt5.positions_get()
-    if positions is None:
-        return pd.DataFrame(columns=["position_id", "symbol", "duration_hours"])
-    now = datetime.now(timezone.utc)
-    for position in positions:
-        row = position._asdict()
-        if row.get("symbol") not in symbols:
-            continue
-        opened = datetime.fromtimestamp(row["time"], tz=timezone.utc)
-        rows.append({
-            "position_id": row.get("ticket"),
-            "symbol": row.get("symbol"),
-            "volume": row.get("volume"),
-            "open_time": opened.isoformat(),
-            "duration_hours": round((now - opened).total_seconds() / 3600, 4),
-            "price_open": row.get("price_open"),
-            "price_current": row.get("price_current"),
-            "profit": row.get("profit"),
-        })
-    return pd.DataFrame(rows)
-
-
 def collect(args: argparse.Namespace, run_dir: Path) -> dict[str, Any]:
     collector, analyzer = load_existing_tools()
     collector.connect()
@@ -175,9 +151,16 @@ def collect(args: argparse.Namespace, run_dir: Path) -> dict[str, Any]:
         unmatched_spot.to_csv(run_dir / "unmatched_spot_trades.csv", index=False)
         unmatched_futures.to_csv(run_dir / "unmatched_futures_trades.csv", index=False)
 
-        open_positions = serialize_positions(collector.mt5, {SPOT_SYMBOL, FUTURES_SYMBOL})
+        open_positions = collector.collect_open_positions({SPOT_SYMBOL, FUTURES_SYMBOL})
+        open_pairs, unmatched_open_spot, unmatched_open_fut = collector.match_open_pairs(
+            open_positions, SPOT_SYMBOL, FUTURES_SYMBOL, args.pair_tolerance_seconds
+        )
         open_positions.to_csv(run_dir / "open_positions_censored.csv", index=False)
+        open_pairs.to_csv(run_dir / "open_pairs_censored.csv", index=False)
         q4 = analyzer.analyze_q4(pairs, open_positions)
+
+        pair_log = collector.update_pair_log(pairs, open_pairs)
+        orphan_candidate_legs = int(len(unmatched_open_spot) + len(unmatched_open_fut))
 
         q3: dict[str, Any] = {
             "status": "not_collected",
@@ -210,6 +193,13 @@ def collect(args: argparse.Namespace, run_dir: Path) -> dict[str, Any]:
             "margin_required": margins,
             "closed_pairs": int(len(pairs)),
             "open_positions_censored": int(len(open_positions)),
+            "orphan_candidate_legs": orphan_candidate_legs,
+            "pair_log": {
+                "path": str(collector.PAIR_LOG_PATH),
+                "total_tracked_pairs": int(len(pair_log)),
+                "closed": int((pair_log["status"] == "closed").sum()) if len(pair_log) else 0,
+                "open": int((pair_log["status"] == "open").sum()) if len(pair_log) else 0,
+            },
             "Q_003": q3,
             "Q_004": q4,
             "research_gate": "Evidence only; no thresholds, trading decision, or live approval is produced.",

@@ -95,6 +95,34 @@ ratio (0.01/0.01 does not imply equal *exposure* — contract sizes are equal bu
 differs) and the full transaction-cost model are still required before any EV conclusion. See
 `docs/02_quant/16_HEDGE_RATIO.md` and `14_TRANSACTION_COST_MODEL.md`.
 
+## Margin-stress multiplier candidate (Q-003, 2026-09-16)
+
+Both legs' margin rates (`XAUUSD.vx` 1%, `GC-Z26` 2% at the 0–10 lot tier) are a fixed percentage of notional,
+so at a **fixed lot size**, required margin scales linearly with price — a pure multiplication, not a
+tiered/nonlinear function, as long as the position stays within the same lot-size margin-rate tier. Applying
+this to the combined baseline margin ($129.67 at 0.01/0.01, live `order_calc_margin()`):
+
+| Adverse price move | Stressed combined margin | Multiplier | Free margin remaining | Margin level |
+|---|---|---|---|---|
+| 1.243% (the real observed move behind the `R-004` anomaly, `02_quant/13_BASIS_MODEL.md`) | $131.28 | 1.012x | $868.72 | 762% |
+| 5% (conventional stress-test size) | $136.15 | 1.050x | $863.85 | 734% |
+| 10% | $142.64 | 1.100x | $857.36 | 701% |
+| 20% (well beyond any move observed in this dataset) | $155.60 | 1.200x | $844.40 | 643% |
+
+**Finding: at 0.01 lot, margin stress is not the binding risk.** Even a 20% adverse price move — far larger
+than anything in the 707k-row/7-day sample — only adds ≈$26 to required margin and leaves margin level above
+600%. This confirms the risk-review's earlier conclusion from the other direction: the dollar amount at risk
+from a margin-stress event at this size is roughly two orders of magnitude smaller than the dollar amount at
+risk from a single unhedged leg during a leg-mismatch event (R-003: ≈$54 from the same 1.243% real move,
+because that dollar figure comes from *notional* directional exposure on one leg, not from margin
+recalculation on a still-hedged pair). **A margin-stress multiplier only becomes materially relevant at larger
+position sizes** (Phase 4 "Limited sizing increase" or beyond) where the lot size could cross into a higher
+margin-rate tier (2%/3%/5% brackets already sourced above) — this candidate must be recalculated for whatever
+lot size is under consideration at that time, not reused from this 0.01-lot analysis.
+
+Reproducible: `baseline = 42.96 + 86.71; stressed = baseline * (1 + move_pct)`. This is a research candidate,
+not an approved production limit.
+
 ## Account-level checks
 
 - [x] Does the MT5 account support hedging mode (not netting-only)? — **Yes**, confirmed by terminal title bar

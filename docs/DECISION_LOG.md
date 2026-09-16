@@ -34,6 +34,14 @@ Use `/arb-doc-sync` to add or update entries after a validated change.
   only that it is *viable*. Live account (not demo) — no orders should be placed under this decision alone.
 - **Invalidation condition:** if commission/settlement/rollover data (still open, see `07_BROKER_RESEARCH.md`)
   turns out unfavorable, or a materially better broker/instrument combination surfaces during `/arb-hostile-review`.
+- **Evidence update (2026-09-16):** `GC-Z26`'s settlement mechanism is now confirmed from `symbol_info()`
+  itself (`trade_calc_mode=SYMBOL_CALC_MODE_CFD`) — it is a cash-settled CFD, not a delivery-linked or
+  exchange-cleared future. This is neutral to this decision (no alternative broker/instrument combination is
+  known to avoid this — CFD-style gold futures replicas are standard at retail brokers), but it materially
+  narrows how `12_FAIR_VALUE_MODEL.md`'s cost-of-carry model should be interpreted — see that document. Also
+  found: `GC-Z26`'s `expiration_time` field reads 0 despite the stated 25 Nov 2026 expiry — no
+  machine-readable rollover date exists yet (`docs/RISK_REGISTER.md` R-005). Neither finding invalidates this
+  decision; both sharpen open items already named in "Risks" above.
 
 ### D-002: 0.01/0.01 lot achieves exact physical delta neutrality on this specific pair
 - **Status:** accepted (calculation, not a live-trading approval)

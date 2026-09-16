@@ -54,7 +54,7 @@ relevant to `12_FAIR_VALUE_MODEL.md`, still NOT STARTED.
 | Swap — spot leg (long, held) | −60 pts/day = **−$0.60/day**; ×3 on the Wednesday rollover = **−$1.80** that day | Sourced |
 | Swap — futures leg (short, held) | **$0.00/day** — `swap_mode=0`, confirmed disabled | Sourced (new finding this run) |
 | Financing/carry (embedded, not daily swap) | Not separable from the basis itself yet — `12_FAIR_VALUE_MODEL.md` NOT STARTED | Blocked |
-| Rollover mechanism/cost near expiry | Undocumented — settlement type (cash vs delivery-linked) still unknown | **Blocked on Q-002** |
+| Rollover mechanism/cost near expiry | Settlement type now known (cash-settled CFD, `trade_calc_mode=SYMBOL_CALC_MODE_CFD`); rollover *timing/mechanics* still undocumented — no machine-readable expiry field exists | **Partially resolved, still blocked on Q-002 for timing/mechanics** |
 | Slippage (entry/exit) | Not measured — no live execution has occurred | Blocked — needs Phase 1 (demo/live) data |
 | Latency uncertainty | Not measured | Blocked — needs Phase 1 data |
 | FX conversion | **$0.00** — both legs quote/settle in USD | Resolved |
@@ -152,8 +152,12 @@ stable rate going forward; the table above already uses it.
 - Swap accrues once per calendar day the position is held overnight, with the standard MT5 triple-charge on
   the day indicated by `swap_rollover3days=3` (Wednesday) to cover the weekend. Not confirmed against an
   actual multi-day held position (no position has ever been opened by this project).
-- The `$7.50` futures commission is charged on both entry and exit ("in/out" per `07_BROKER_RESEARCH.md`) —
-  read literally from the spec window's wording, not independently confirmed by an actual filled trade.
+- ~~The `$7.50` futures commission is charged on both entry and exit ("in/out" per `07_BROKER_RESEARCH.md`) —
+  read literally from the spec window's wording, not independently confirmed by an actual filled trade.~~
+  **Superseded — no longer an assumption.** See "Discrepancy — resolved" above: real deal history with an
+  explicit `Commission` column confirms **$10/lot round trip total** (not $7.50 in/out) for trades opened from
+  2026-09-14 onward. This bullet is kept struck through rather than deleted so the correction is visible; do
+  not cite the $7.50 figure going forward.
 
 ## Hypotheses (unproven, need `12_FAIR_VALUE_MODEL.md`/`13_BASIS_MODEL.md` to test)
 
@@ -164,12 +168,54 @@ stable rate going forward; the table above already uses it.
 - The gap may not decay smoothly toward zero as expiry approaches; it might jump, stay wide until late, or
   overshoot. No time-to-convergence data exists yet to test this.
 
+## Q-002 update (2026-09-16) — settlement/rollover partially resolved, price source and position-restriction still open
+
+Source: `research/2026-09-15T190918Z/symbol_specs.json` (`symbol_info()` dump, already partially mined for
+swap fields above; these fields were not previously read for Q-002).
+
+- **`GC-Z26` settlement mechanism — resolved as far as the API can answer.** `trade_calc_mode = 2`, and the
+  collector's own human-readable annotation confirms `_trade_calc_mode_name = "SYMBOL_CALC_MODE_CFD"` — this
+  is a **cash-settled CFD tracking a futures reference price**, not a delivery-linked or exchange-cleared
+  futures contract, directly from the broker's own calculation-mode field (not the marketing name/description,
+  which was the only prior evidence). This matters beyond bookkeeping: standard cost-of-carry / convenience-
+  yield theory assumes a real deliverable contract; a CFD's basis can instead reflect the broker's own
+  synthetic-quote construction — see the caveat added to `12_FAIR_VALUE_MODEL.md`'s implied-carry finding.
+- **`GC-Z26` rollover mechanics — still open, and now with a specific, concrete gap.** `expiration_time = 0` in
+  the live `symbol_info()` dump, despite the symbol's own `description` field stating "Gold December 2026
+  Futures - Exp 25 Nov 2026". (Do not confuse this with `expiration_mode = 15`, which is a bitmask of which
+  *order*-expiration types — GTC/day/specified — the symbol supports; it says nothing about the *contract's*
+  own expiry.) **Finding: the contract's expiry date is not mechanically readable from the API's dedicated
+  expiry field** — it currently only exists as free text in `description`/`name`. This means no code can
+  currently detect an approaching rollover or a symbol substitution purely from `symbol_info()`; monitoring
+  must rely on parsing the name/description string or on manual/broker-support confirmation. This is a
+  concrete instance of the exact risk `docs/RISK_REGISTER.md` R-005 already describes generically — flagged
+  there now with this specific evidence.
+- **`XAUUSD.vx` price source — still open, evidence is weak and flagged as unreliable.** `symbol_specs.json`
+  lists `exchange: "CME"` for `XAUUSD.vx`, but spot gold (`XAUUSD`) is not a CME-listed instrument (CME lists
+  gold *futures*, not spot) — this field is almost certainly a broker template/default value carried over from
+  the futures symbol's categorization, not a genuine liquidity-provider disclosure. **Do not treat this field
+  as resolving the price-source question.** The true price source (which liquidity providers feed
+  `XAUUSD.vx`'s quotes) still requires broker documentation or direct support confirmation; nothing in the
+  collected data answers it.
+- **Opposite-direction position restriction — still fully open.** No field in `symbol_info()` or any other
+  collected source speaks to whether VPFX restricts holding simultaneous opposite-direction positions across
+  `XAUUSD.vx` and `GC-Z26`. Not answerable without a broker documentation lookup or a support inquiry; not
+  fabricated here.
+
+**Net effect on Q-002:** settlement mechanism is now resolved (CFD, sourced from the calc-mode field);
+rollover mechanics remain open with a sharper, concrete problem statement (no machine-readable expiry field);
+price source and opposite-direction restriction remain open, one of them (price source) with a piece of
+evidence now explicitly flagged as unreliable rather than silently missing.
+
 ## Unresolved questions this document depends on
 
-- **Q-002** (open) — spot commission, `GC-Z26` settlement mechanism, rollover process. Directly blocks
-  finishing this table.
+- **Q-002** (open, partially advanced — see update above) — spot price source and the broker's opposite-
+  direction-position policy remain the two fully open items; rollover mechanics are now a concrete, named gap
+  (no machine-readable expiry field) rather than a vague unknown.
 - **New: time-to-convergence / expected holding period.** Without this, the swap-cost table above cannot be
-  converted into an actual expected cost — only a sensitivity table. See "Decisions proposed" below.
+  converted into an actual expected cost — only a sensitivity table. `13_BASIS_MODEL.md` now has a
+  supplementary tick-level decay proxy alongside the n=7 realized-pair sample, but neither closes this gap on
+  its own. See "Decisions proposed" below.
 
 ## Risks
 

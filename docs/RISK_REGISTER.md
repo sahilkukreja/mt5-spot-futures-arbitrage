@@ -70,7 +70,16 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   cost uncertainty; specifically, any signal design that doesn't bound expected holding time before the full
   time-to-convergence distribution is measured.
 - **Owner:** Quant research
-- **Status:** open
+- **Status:** open. **Update 2026-09-16:** `02_quant/17_EXPECTED_VALUE.md` (new) assembles the mandate's full
+  `TRUE NET EDGE` component list. Known/measured costs (spread, commission, swap) stay small relative to the
+  raw spread's own p05 for near-term holding periods (same-day cost floor $0.70 vs. p05 raw spread $39.54).
+  This narrows but does not close R-002: entry/exit slippage, latency uncertainty, and the execution-risk
+  buffer are still **unmeasured** (no live execution trial exists), and the Required Safety Margin the mandate
+  requires is still **undefined** — both are exactly the kind of "unmodelled cost" this risk names, so R-002
+  stays open until a bounded Phase 1 demo-execution trial supplies them. Separately, `12_FAIR_VALUE_MODEL.md`'s
+  implied-carry decomposition shows ~77% of the average gap is consistent with SOFR-based carry and ~23%
+  (~$9.67) is an unexplained residual not yet attributable to a specific cause — relevant context for whether
+  the "edge" being sized against costs is real or partly an artifact of comparing against the wrong baseline.
 
 ### R-003: Unmatched or partially filled hedge leg
 - **Cause:** asynchronous acceptance, rejection, partial fill, latency, disconnection, or unsupported filling mode
@@ -81,7 +90,24 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   freeze after ambiguous broker results, emergency flatten, and kill switch. Detailed design: `22_STATE_MACHINE.md`.
 - **Trigger / metric:** any pair with non-zero delta mismatch beyond the configured time/exposure limit
 - **Owner:** Execution design
-- **Status:** open
+- **Status:** open. **`/arb-risk-review` update (2026-09-16) — concrete magnitude now measured, not just
+  hypothetical:** at 0.01 lot each leg is 1 XAU of gross notional (~$4,300–4,345), even though combined margin
+  is only ≈$129.67 (`order_calc_margin()`: `XAUUSD.vx` $42.96 + `GC-Z26` $86.71, free margin $870.33, margin
+  level ≈771% — margin itself is not the binding constraint). The `02_quant/13_BASIS_MODEL.md` R-004 anomaly
+  (2026-09-11 13:30:01–13:30:17 UTC) shows the futures leg repricing **~54 points in ~10 seconds** while the
+  spot leg lagged ~6 seconds. If a leg failure or a delayed second fill left one side unhedged during a move
+  like this, the resulting loss (≈$54 at 0.01 lot) would be **≈5.4% of the $1,000 capital ceiling from one
+  ordinary fast-market tick sequence observed in a quiet 7-day sample** — not a tail-event assumption, a
+  measured one. No orphan-leg timeout exists yet to bound this (Q-003 `orphan_leg_timeout` status remains
+  `insufficient_data`), and no execution/risk engine exists to enforce the mitigations listed above (only
+  `20_SYSTEM_ARCHITECTURE.md`/`22_STATE_MACHINE.md` skeletons exist; `21_EXECUTION_ENGINE.md`,
+  `24_RISK_ENGINE.md`, and all of `06_operations/` are unwritten). **This is the specific, evidenced reason no
+  demo or live order placement should be approved yet** — not an economics objection, an unenforced-invariant
+  objection. Re-test: re-run `/arb-risk-review` once a calibrated orphan-leg timeout (from real signal-to-fill
+  latency data) and a written kill switch / risk engine exist.
+- **Related, outside this project's control:** a live position opened by someone/something other than this
+  project was open on the account as of 2026-09-15 with no automated monitoring (see `14_TRANSACTION_COST_MODEL.md`
+  "Currently open pair"); current status not re-checked this session (MT5 tool connection unavailable).
 
 ### R-004: Stale or asynchronous quotes create false basis signal
 - **Cause:** spot and futures prices were updated at materially different times or one feed stopped updating.
@@ -97,10 +123,19 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   record signal-to-fill latency. The latest Q-003 analyzer run measures `quote_skew_ms` (mean 130.5932ms,
   median 108ms, p95 384ms, p99 452ms, merge tolerance 500ms, n=707,467) — evidence for research candidates,
   not an approved limit.
-  The specific anomalous row still hasn't been isolated to check whether its `quote_skew_ms` was elevated
-  (it may not be — a large skew isn't the only way a false basis can appear).
+- **Update 2026-09-16 — anomalous row isolated:** `tools/q3_q4_research.py`'s `find_basis_anomaly()` locates the
+  event precisely at **2026-09-11 13:30:11.218 UTC**. Its `quote_skew_ms = 238` is elevated (above the 707k-row
+  median of 108ms) but not extreme (below the p95 of 384ms) — **confirming the earlier caution that a large
+  skew isn't the only way a false basis can appear.** Surrounding ticks show the futures leg repricing sharply
+  three times within ~10 seconds (4393 → 4360 → 4339, a ~54-point drop) while the spot leg's ask stayed frozen
+  for that entire window, catching up only ~6 seconds after the anomalous row. This looks like a genuine
+  fast-market event where the futures feed led and the spot feed lagged by several seconds — not a single
+  badly-desynchronized tick pair, and not reliably caught by a static `quote_skew_ms` threshold alone. See
+  `02_quant/13_BASIS_MODEL.md` for the full row-level table.
 - **Trigger / metric:** quote age or `quote_skew_ms` exceeds an empirically validated limit (data now exists
-  to derive one; not yet done — see Q-003)
+  to derive one; not yet done — see Q-003). **New, per the anomaly above:** a static skew threshold is not
+  sufficient by itself — mitigation design should also consider per-leg price velocity or a multi-tick
+  confirmation window before accepting a signal.
 - **Owner:** Data and execution research
 - **Status:** open
 
@@ -111,7 +146,15 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
 - **Mitigation:** bind every pair to a contract identifier and expiry, prohibit silent substitution, validate session/liquidity, and enforce a no-entry roll window
 - **Trigger / metric:** missing/changed expiry metadata, spread/liquidity deterioration, or days-to-expiry below the approved boundary
 - **Owner:** Instrument research and operations
-- **Status:** open
+- **Status:** open. **Update 2026-09-16 — concrete evidence, not just a hypothetical:** live `symbol_info()` for
+  `GC-Z26` shows `expiration_time = 0`, despite the symbol's own `description` field stating "Gold December
+  2026 Futures - Exp 25 Nov 2026" (`research/2026-09-15T190918Z/symbol_specs.json`; see
+  `02_quant/14_TRANSACTION_COST_MODEL.md` → "Q-002 update"). The contract's expiry is not currently exposed
+  through any machine-readable API field — only as free text in `description`/`name`. Any future rollover
+  monitoring cannot rely on `expiration_time` and must instead parse the description string or use another
+  detection mechanism (e.g. a scheduled manual check, or broker support confirmation of the rollover date/
+  process) — this is the "missing/changed expiry metadata" trigger already named above, now observed directly
+  rather than assumed.
 
 ### R-006: Signal/Risk engine cannot enforce "no trading when costs remove edge" yet
 - **Cause:** `02_quant/14_TRANSACTION_COST_MODEL.md` and `17_EXPECTED_VALUE.md` do not exist yet, so the
