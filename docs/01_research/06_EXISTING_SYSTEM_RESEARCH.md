@@ -1,6 +1,8 @@
 # Existing System Research
 
-Status: IN PROGRESS (internal legacy review done; public/commercial MQL5-ecosystem research done; broader open-source/academic research still pending)
+Status: IN PROGRESS (internal legacy review done and reassessed 2026-09-16 against the full legacy file tree —
+see the strengthened 2026-03-02 finding below; public/commercial MQL5-ecosystem research done; broader
+open-source/academic research still pending)
 
 ## Purpose
 Research publicly available information on existing arbitrage/hedging systems to extract useful patterns — without copying or anchoring on them as baseline.
@@ -46,6 +48,24 @@ failure-mode lessons are portable, and even those are hypotheses to validate, no
 - **Async execution with a watchdog + rollback**: later legacy versions (v2.84+) fired both legs
   non-blocking, then rolled back the filled leg if the counterpart didn't fill within a deadline
   (`InpAsyncOpenDeadlineMs`), rather than leaving a naked position.
+- **Per-error-code retry classification, validated as a good pattern but confirmed NOT to have reached the
+  actual production file — read the source, not just the version-history claims (2026-09-16):**
+  `MMT_TradePannel_Pro_v284.cpp` has a real `ShouldRetry(retcode, waitMs)` function that whitelists a small set
+  of transient codes (requote, price-changed/off, too-many-requests, connection, timeout) as retryable with a
+  code-specific backoff, and treats everything else — **including any unrecognized/"unknown" retcode, via an
+  explicit `default: return false`** — as fatal, not retried, capped by `InpMaxOpenRetries=3`. This is a good
+  pattern worth adopting directly: default-to-non-retryable for unrecognized broker error codes, rather than
+  default-to-retry. **However**, `best_code.cpp` (v3.26, the file the legacy README names as canonical
+  production) was checked directly (not just inferred from `CODE_VERSIONS.md`'s summary) and contains **no**
+  `ShouldRetry`, no `InpMaxOpenRetries`, and no per-error-code classification at all — each `OpenLeg` call is a
+  single `OrderSend`/`OrderSendAsync` attempt that logs and returns on failure, with nothing tracking a
+  rejection streak across repeated trigger re-fires over time. `best_code.cpp` does have
+  `CloseSingleOpenLeg(...)` rollback for leg2-failed-after-leg1-filled (the partial-fill case), but that is a
+  different mechanism from a cross-attempt circuit breaker, and does not stop the same OAG condition from
+  re-firing a brand-new single-shot attempt every time it re-triggers. **Do not assume the "latest/canonical"
+  legacy file carries forward every safety mechanism documented for an earlier version** — verify the actual
+  source. This project's own execution engine needs a cross-attempt, per-symbol consecutive-rejection counter
+  with cooldown/escalation, independent of and in addition to any per-order-send retry logic.
 - **Reconciliation on restart**: legacy scanned deal history on `OnInit` to detect fills that happened while
   the EA was offline — relevant to `docs/03_system_design/28_FAILURE_RECOVERY.md` (not yet written) and the
   general principle (also independently stated in `arb-design`'s skill file) that broker positions are
@@ -57,24 +77,54 @@ failure-mode lessons are portable, and even those are hypotheses to validate, no
   consistent with the mandate's `NO MAGIC OAG/CAG VALUES` requirement to derive thresholds from observed
   distributions rather than picking them arbitrarily.
 
-### Observations (empirical, from one logged session — `trade_history/analysis/2026-03-01_analysis.md`, EA
-v2.82, different broker)
+### Observations (empirical, from two logged sessions on consecutive days — EA `MMT_TradePannel_Pro`,
+different broker, symbols `GCJ26.ma`/`XAUUSD.pp`)
 
-- The raw session log (`sessions/2026-03-01_session.log`) shows this was worse than the analysis note's "twice"
-  summary: `GCJ26.ma SELL` was rejected with `retcode 10044` on **every single retry, dozens of times over
-  roughly 15+ minutes** (19:13–19:27), across many different confirmed trigger prices (cg ranging 14.00–14.26)
-  — i.e. the rejection was persistent and price-independent, not a one-off spike. This is a **hypothesis**,
-  not a confirmed root cause (the analysis doc suspects a session-boundary or contract-availability issue),
-  and it is broker/contract-specific — but it demonstrates a concrete, sustained failure mode the mandate's
-  `EXECUTION AGENT` and `NO ORPHANED HEDGE LEG WITHOUT RECOVERY` invariant must handle: a leg can be
-  structurally unopenable for an extended period while the confirm-timer/retry loop keeps re-triggering
-  against it with no escalation, alert, or backoff — the legacy panel had no max-retry-then-alert/kill
-  behavior visible in this log for the *scheduled* (as opposed to async v2.84+) execution path. Reinforces
-  the mandate's `NO NEW ENTRY AFTER KILL-SWITCH ACTIVATION` and the need for a hard retry ceiling with
-  escalation, not indefinite re-attempts against a persistently rejecting leg.
-- In that session, CAG (auto-close target) was left at 0 on all schedules — i.e. the operator was relying on
-  manual close rather than automated mean-reversion exit. Noted only as an observation of past operational
-  practice, not a recommendation.
+- **2026-03-01** (`trade_history/analysis/2026-03-01_analysis.md`, raw log `sessions/2026-03-01_session.log`,
+  labeled EA v2.82): this was worse than the analysis note's "twice" summary — `GCJ26.ma SELL` was rejected
+  with `retcode 10044` on every single retry, dozens of times over roughly 15+ minutes (19:13–19:27), across
+  many different confirmed trigger prices (cg ranging 14.00–14.26).
+- **2026-03-02 update (this review, reassessed 2026-09-16) — materially larger and more severe than the prior
+  write-up implied.** The raw log `sessions/2026-03-02_session.log` is UTF-16 encoded (a plain ASCII/UTF-8
+  grep silently finds nothing in it — worth remembering if this folder is searched again). Decoded, it shows
+  **408 `OpenLeg FAIL ... ret=10044` events in under 50 minutes** (01:26:09–02:16:18), not "dozens over 15
+  minutes" — and critically, **the rejections hit both legs, not just the futures leg**: `XAUUSD.pp` (the spot
+  leg) failed **359 times**, `GCJ26.ma` (futures) failed **49 times**, all the same retcode. This changes the
+  most likely explanation: a rejection that also hits a liquid, continuously-tradeable spot gold symbol is
+  harder to explain by "futures contract session boundary" alone (the 2026-03-01 analysis's leading
+  hypothesis) — it looks more consistent with an account-, connection-, or broker-side condition (e.g. trading
+  temporarily disabled, a margin/permission check, or a broker-wide state) than a symbol-specific one. Still a
+  **hypothesis, not a confirmed root cause** — this project has no access to that broker's server-side logs.
+  The failures stopped abruptly at 02:16:18 and normal fills resumed immediately after (`SCHEDULED TRIGGER
+  CONFIRMED` → `OPEN` with no further `FAIL` lines), which is more consistent with a time-boxed condition
+  clearing than a permanent block. One rollback event is visible in the log (`"Second leg failed -> rollback
+  first leg"` at 02:16:18) — i.e., in at least one of the 408 attempts, one leg did fill before the other
+  failed, and the panel's rollback path fired correctly even under this sustained failure condition. That the
+  same structural failure **recurred on a separate calendar day** against the same symbol pair, with no
+  evidence the operator diagnosed or fixed it between sessions, is itself the strongest part of this finding:
+  this was a durable, multi-day, multi-hundred-attempt failure mode, not a one-off. It demonstrates a concrete,
+  severe failure mode the mandate's `EXECUTION AGENT` and `NO ORPHANED HEDGE LEG WITHOUT RECOVERY` invariant
+  must handle: a leg (or both legs) can be structurally unopenable for hours while a confirm-timer/retry loop
+  keeps re-triggering against it roughly once a minute with no escalation, alert, circuit breaker, or backoff
+  — 408 consecutive rejected order attempts against a live broker is also itself an operational/reputational
+  risk (rate-limiting, account flagging) independent of the missed-trade cost. Reinforces the mandate's
+  `NO NEW ENTRY AFTER KILL-SWITCH ACTIVATION` and the need for a hard retry ceiling with escalation — e.g.
+  halt-and-alert after N consecutive rejections on the same symbol within a short window — not indefinite
+  re-attempts against a persistently rejecting leg.
+- In the 2026-03-01 session, CAG (auto-close target) was left at 0 on all schedules — i.e. the operator was
+  relying on manual close rather than automated mean-reversion exit. Noted only as an observation of past
+  operational practice, not a recommendation.
+
+### Security note on this legacy dump (2026-09-16, do not act on this as a strategy/architecture finding)
+
+Two files in `legacy/SPOT-FUR-ARB-BOT/` contain live-looking plaintext credentials: an MT5 demo-account
+login/password (`Untitled-1.js`) and a Telegram bot token (`mmt/spot_future_arb_code/latest code/MMT_Gap_Alerts_TG.mq5`,
+hardcoded as the `InpTeleToken` input default). Neither is reproduced here. Both files are already excluded by
+`.gitignore` (the whole `legacy/` folder is quarantined and has never been committed), and nothing has been
+promoted into `reference/legacy/` yet, so there is no git-history exposure from this repo. Recommend the user
+rotate both credentials (regenerate the Telegram bot token via BotFather; change the demo account password) as
+a precaution, and never let either value be copied into `reference/legacy/` or any committed file during future
+promotion.
 
 ### Rejected pattern
 
@@ -85,6 +135,19 @@ v2.82, different broker)
   `docs/02_quant/17_EXPECTED_VALUE.md` should be sanity-checked against realistic systematic-strategy return
   ranges (the note suggests 3–8%/month as an optimistic-but-plausible ceiling for a *validated* systematic FX/
   gold strategy) rather than accepting an aggressive target at face value.
+- **Re-read in full 2026-09-16 — the strategy logic is correctly irrelevant, but its risk-control input table
+  is a reusable pattern that was missed on the first pass.** Independent of the (unrelated) Donchian strategy,
+  the same file's input reference documents a portable risk-limit vocabulary directly relevant to this
+  project's still-unwritten `03_system_design/24_RISK_ENGINE.md` and the mandate's still-empty `INITIAL RISK
+  LIMITS` section: a daily-loss-percent limit plus a separate consecutive-loss-count limit (two independent
+  gates, not one), a weekly-drawdown-percent limit, and an equity-drawdown-from-peak "pause" that explicitly
+  requires **manual restart** rather than auto-resuming once the drawdown condition clears. That last one is
+  the notable pattern: distinguishing a limit that blocks new entries temporarily (auto-clears) from one that
+  halts and requires a human to explicitly re-arm the system — directly analogous to the mandate's own `NO NEW
+  ENTRY AFTER KILL-SWITCH ACTIVATION` invariant, now with a concrete precedent for *which* triggers should be
+  auto-clearing vs. human-gated. This is a **reusable pattern for the risk engine's limit taxonomy**, not a
+  recommendation to reuse any of the file's actual numeric thresholds (those are for a different instrument,
+  strategy, and account).
 
 ---
 

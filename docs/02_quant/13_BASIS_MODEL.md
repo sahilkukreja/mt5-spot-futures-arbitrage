@@ -1,7 +1,11 @@
 # Basis Model
 
-Status: IN PROGRESS — distribution stats and a tick-level mean-reversion proxy are now computed against real
-data. Time-to-convergence (Q-004) is still not resolved to a durable conclusion — see below.
+Status: IN PROGRESS — distribution stats computed against real data across two independent window widths
+(7-day and 45-day). The tick-level mean-reversion ("decay") proxy was re-tested at 45 days and found **not
+robust** — its half-life estimates are window-length artifacts, not a real measurement (see below); it is
+withdrawn as usable Q-004 evidence pending a de-trended re-implementation. A real, distinct finding survived
+this update: the R-004 stale-quote anomaly now has 2 occurrences clustering at the same time of day (13:30
+UTC) on two Fridays 7 days apart. Time-to-convergence (Q-004) is still not resolved to a durable conclusion.
 
 ## Purpose
 Model the observed spot/futures basis statistically: distribution, mean reversion, and time-to-convergence.
@@ -52,6 +56,33 @@ against exactly this pattern (leg-level price velocity / a multi-tick confirmati
 quote-age threshold, since the skew value alone would not have flagged this row at the 384ms/452ms p95/p99
 candidates from Q-003.
 
+### Update 2026-09-16 — two more occurrences found, and they cluster suspiciously: same time of day, same weekday
+
+Re-running `find_basis_anomaly()` against the wider 45-day/5,111,120-row dataset
+(`research/2026-09-16T140628Z/q3_q4_decay_fairvalue_report.json`) with a broader net (`convergence_basis < 25`,
+vs. the original `< 10`) finds **two more anomalous rows, both at 2026-09-04, both within the same ~10-second
+window of 13:30 UTC** as the original 2026-09-11 event:
+
+| Date (UTC) | Weekday | Time | `convergence_basis` |
+|---|---|---|---|
+| 2026-09-04 | Friday | 13:30:01.354 | 3.95 |
+| 2026-09-04 | Friday | 13:30:07.947 | 24.60 |
+| 2026-09-11 | Friday | 13:30:11.218 | 5.07 (the original finding) |
+
+**All three rows fall within a 17-second window of 13:30 UTC, on two dates exactly 7 days apart, both
+Fridays.** 13:30 UTC = 8:30am US Eastern (EDT) — the standard release time for several major US economic
+indicators. This is now a real pattern, not a single anomalous tick: 2 of the (roughly 6-7) Fridays in the
+45-day window show this exact signature (futures leg repricing sharply while the spot leg's quote lags by
+several seconds, producing a momentarily too-small basis). **This is not yet a confirmed root cause** — this
+project has not checked which specific data release, if any, was scheduled at 8:30am ET on either date, and
+n=2 dates is still a small sample; it could reflect two Fridays that happened to share this property for
+unrelated reasons (e.g. some other Friday-specific session/liquidity-provider transition, not a data release).
+But it materially raises the anomaly from "one observed instance" to "a plausible recurring, roughly-timed
+event." **Actionable implication for signal design:** if this pattern holds, a simple, defensible mitigation is
+a fixed no-entry window around 13:30 UTC (needs a proper backtest across more weeks to size the window
+correctly — not proposed as a numeric candidate yet, per the mandate's `NO MAGIC` rule) — cheaper and more
+targeted than relying solely on the still-unproposed per-leg velocity threshold discussed below.
+
 ## Quote-staleness threshold — research candidate, and why skew alone isn't enough (Q-003, 2026-09-16)
 
 `quote_skew_ms` distribution (n=707,467, `research/2026-09-15T190918Z/q3_q4_decay_fairvalue_report.json`):
@@ -94,63 +125,91 @@ measures this — stated plainly rather than substituted with an adjacent number
 9.91h, 4 of 7 profitable, net +$1.57 after commission, 2026-09-11 through 2026-09-15. Too small to conclude
 anything about multi-week behavior; see Q-004 in `OPEN_QUESTIONS.md`.
 
-**2. Tick-level mean-reversion ("decay") proxy — new, this update.** `tools/q3_q4_research.py
+**2. Tick-level mean-reversion ("decay") proxy — first computed on 7 days, re-run on 45 days 2026-09-16, and
+the re-run reveals the method itself is not robust at this window length.** `tools/q3_q4_research.py
 analyze_basis_decay()` fits an AR(1) model (`Δbasis_t = a + b·basis_{t-1}`, half-life = `ln(2)/(-b)`) to the
 `convergence_basis` series resampled onto several fixed grids, plus autocorrelation of the 1-minute series at
-increasing lags. Source: `research/2026-09-15T190918Z/q3_q4_decay_fairvalue_report.json` →
-`Q_004_decay_proxy`.
+increasing lags.
 
-| Resample grid | n bars | AR(1) half-life |
+| Resample grid | 7-day half-life (n=707,467) | 45-day half-life (n=5,111,120) |
 |---|---|---|
-| 1 min | 6,883 | **112 min (≈1.9h)** |
-| 5 min | 1,381 | 417 min (≈6.9h) |
-| 15 min | 461 | 687 min (≈11.4h) |
-| 30 min | 231 | 771 min (≈12.9h) |
-| 60 min | 116 | 888 min (≈14.8h) |
-| 240 min | 32 | 1,491 min (≈24.9h) |
+| 1 min | 112 min (≈1.9h) | **1,437 min (≈23.9h)** |
+| 5 min | 417 min (≈6.9h) | **4,878 min (≈3.4d)** |
+| 15 min | 687 min (≈11.4h) | **9,408 min (≈6.5d)** |
+| 30 min | 771 min (≈12.9h) | **11,866 min (≈8.2d)** |
+| 60 min | 888 min (≈14.8h) | **22,281 min (≈15.5d)** |
+| 240 min | 1,491 min (≈24.9h) | **82,987 min (≈57.6d)** |
 
-Autocorrelation of the 1-minute series: 0.994 at 1 min, 0.96 at 1h, 0.90 at 4h, 0.80 at 8h, 0.71 at 12h, 0.60
-at 24h — decays slowly, never crossing 0.5 within the measured lags.
+Every half-life estimate grew substantially — by roughly 13x at the finest (1-min) grid and by more than 55x at
+the coarsest (240-min) grid — simply from widening the observation window, with no change in method.
+Autocorrelation at 24h also rose sharply, from 0.60 (7-day pass) to **0.9386** (45-day pass). The AR(1) fit's
+own *implied local mean* is the smoking gun: at the 1-min grid it's 51.11, but at the 240-min grid it's
+**15.78** — a 35-point swing depending purely on which resampling grid is used, on the *same* underlying
+series. Compare this to the fair-value analysis above: the *implied annualized rate* stayed nearly constant
+(4.74% → 4.71%) across the identical window widening. **Conclusion: the raw dollar `convergence_basis` series
+is not stationary enough, at multi-week scale, for a level-based AR(1)/autocorrelation half-life to mean what
+it's supposed to mean.** Gold's spot price moved roughly 8% over this 45-day window, and the basis rode that
+trend upward alongside it (mean mid-basis $41.6 → $52.2, tracking `12_FAIR_VALUE_MODEL.md`'s corresponding
+finding) — the AR(1) fit at coarse grids is mostly fitting that trend, not genuine mean-reversion speed, so its
+half-life estimate balloons. **The 7-day estimate (≈112 min at the 1-min grid) should not be trusted as a
+stable number either** — it was likely already somewhat contaminated by the same effect at a smaller scale,
+and now demonstrably fails to replicate at a larger one.
 
-**What this shows:** the half-life estimate is not stable across resampling grids — it grows roughly 13x from
-the 1-minute grid to the 4-hour grid. Combined with the slowly-decaying autocorrelation (still 0.60 after 24h),
-this is consistent with two layered effects: a fast, partially mean-reverting intraday component (snapping
-back over roughly 2 hours) sitting on top of a slower-moving level that does not fully revert within this
-single ~7-day window. The AR(1) fit at coarse grids is likely contaminated by that slow drift (its own implied
-long-run mean falls from 41.47 at the 1-min grid to 40.36 at the 4-hour grid, tracking the same week-over-week
-drift visible in `14_TRANSACTION_COST_MODEL.md`'s note about the underlying price moving materially over the
-week).
+**What this does establish, still:** autocorrelation at the 1-minute grid stays extremely high through short
+lags in both passes (0.994 at 1 min in both), consistent with real, fast intraday persistence at the shortest
+horizons — that part of the finding survives. What does **not** survive is any of the specific half-life
+numbers, at any grid — they are artifacts of window length, not a property of the basis series itself.
 
-**What this does not show:** this is a statistical persistence measure of the raw tick series, not the
-duration of an actual entry/exit-threshold-conditioned trade — it does not use, and is not constrained by, any
-particular entry or exit rule. It is offered as additional, distinct evidence alongside the n=7 realized-pair
-sample, not a replacement for it. Together, both pieces of evidence point the same direction (intraday-to-single-day
-resolution is plausible; multi-week behavior remains untested) but neither is individually sufficient to close
-Q-004.
+**Smallest next fix for this specific method (not yet done):** re-run `analyze_basis_decay()` on the *implied
+annualized rate* series (already shown to be far more stationary — tight std of 0.09–0.11 pp across both
+window lengths) instead of the raw dollar `convergence_basis`, or explicitly de-trend the basis series (e.g.
+subtract a rolling mean) before fitting AR(1). Until one of those is done, this decay proxy should be treated
+as **not usable evidence for Q-004** — a correction from its prior "additional, distinct evidence" framing.
 
-## Persistent pair tracking (Q-004, 2026-09-16)
+**What this does not show, unchanged:** even a correctly-detrended version of this proxy would still be a
+statistical persistence measure of the raw tick series, not the duration of an actual entry/exit-threshold-conditioned
+trade. It would remain additional evidence alongside the n=7/n=8 realized-pair sample, not a replacement for
+it.
 
-`tools/pair_ledger.py` (new) merges each run's `reconciled_pairs.csv` into a durable, PairID-keyed ledger at
-`research/pair_ledger.csv` (gitignored like all other raw research output, same as every other artifact in
-this project — periodically promote its summary stats here by hand). PairID = `{spot_position_id}_
-{fut_position_id}`, stable since MT5 position IDs are immutable. Re-running it against future `--pairs`
-collections lets the realized-pair sample keep growing across weeks instead of resetting to whatever a single
-run's account-history window covers — directly addresses Q-004's "n=7 is too small" limitation by making
-n grow over time rather than requiring one large one-off collection. Seeded and verified idempotent this
-session against the existing 7-pair sample (re-running against the same input leaves the ledger at 7 pairs,
-not 14 — confirmed by testing).
+## Persistent pair tracking (Q-004, 2026-09-16, updated same day)
+
+`tools/pair_ledger.py` merges each run's `reconciled_pairs.csv` and `open_pairs_censored.csv` into a durable,
+PairID-keyed ledger at `research/pair_ledger.csv` (gitignored like all other raw research output — periodically
+promote its summary stats here by hand). PairID = `{spot_position_id}_{fut_position_id}`, stable since MT5
+position IDs are immutable. **Confirmed working as intended, same day:** the 45-day collection run found the
+previously-"currently open" 8th pair (`34231073`/`34231072`) had since closed (entry basis 40.37, exit 40.22,
+duration 2.16h, net +$0.05) — the shortest-held pair in the sample so far — and found **4 new pairs opened and
+still open** (real, live positions on the account, not this project's output; see
+`14_TRANSACTION_COST_MODEL.md` "Currently open positions"). Re-running the ledger against this data correctly
+grew it from 7 closed to **8 closed + 4 open = 12 total tracked pairs**, transitioning the 8th pair from `open`
+to `closed` in place rather than duplicating it — exactly the behavior this mechanism was built for. **Data
+quality note:** three of the four open pairs' snapshot `duration_hours_at_snapshot` came out slightly negative
+(as low as −0.65h) in this run, almost certainly a small clock-sync offset between this machine and the MT5
+terminal/broker server rather than a real negative duration; does not affect any closed-pair statistic (which
+use `close_time − open_time`, immune to any single clock's absolute offset).
+
+**Updated n=8 closed-pair statistics** (`Q_004` in `research/2026-09-16T140628Z/research_questions_summary.json`):
+durations 2.16–12.74h, median 11.13h, mean 8.95h (down slightly from 9.91h with n=7, pulled down by the new
+2.16h pair), 5 of 8 profitable, still net positive. Still far too small a sample for a multi-week conclusion —
+this is expected to keep growing slowly as the ledger is re-run over the coming weeks.
 
 ## Main risk
 The measured basis is only valuable if we know whether it is an actual economic edge or merely a normal
-carry pattern — see `12_FAIR_VALUE_MODEL.md`'s implied-carry decomposition (~77% of the average gap is
-consistent with SOFR-based carry; ~23% is not). The key missing evidence is the broker settlement/rollover
-story (Q-002) and real holding-period statistics beyond both the n=7 sample and the decay proxy's ~7-day
-window.
+carry pattern — see `12_FAIR_VALUE_MODEL.md`'s implied-carry decomposition, now validated across two window
+widths (~77% of the average gap consistent with SOFR-based carry; ~23% is not, confirmed stable at both 7-day
+and 45-day sample sizes). The key missing evidence is the broker settlement/rollover story (Q-002) and real
+holding-period statistics beyond both the n=8 closed-pair sample and a still-usable decay/persistence measure
+(the current one is withdrawn as unreliable — see above).
 
 ## Current evidence status
-- Margin and tick-level executable basis distribution are collected (`11_SPREAD_DEFINITION.md`).
-- The R-004 anomaly is now isolated to a specific timestamp and mechanism (fast-market leg lag), not just a
-  hypothetical.
-- A tick-level mean-reversion decay proxy now exists (this update) as additional Q-004 evidence.
-- Q-004 remains open until a materially larger sample of holding periods, or a wider-`T` tick dataset spanning
-  weeks rather than days, is observed.
+- Margin and tick-level executable basis distribution are collected at two window widths
+  (`11_SPREAD_DEFINITION.md`, and the 45-day/5.1M-row extension referenced above).
+- The R-004 anomaly now has 3 occurrences across 2 dates, both Fridays, clustering within 17 seconds of 13:30
+  UTC — upgraded from a single isolated event to a plausible recurring pattern.
+- The tick-level mean-reversion decay proxy was tested at 45 days and found **not robust** (half-life estimates
+  are window-length artifacts) — withdrawn as usable Q-004 evidence pending a de-trended re-implementation
+  (proposed: run it on the implied-rate series instead of raw dollar basis).
+- The persistent pair ledger (`tools/pair_ledger.py`) is confirmed working end-to-end: correctly transitioned
+  a pair from open to closed and grew from 7 to 12 tracked pairs (8 closed, 4 open) across two real runs.
+- Q-004 remains open until a materially larger sample of holding periods is observed — the ledger mechanism now
+  exists to accumulate that over time, but n=8 is still far too small for a multi-week conclusion.

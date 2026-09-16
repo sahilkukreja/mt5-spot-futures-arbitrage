@@ -76,25 +76,25 @@ stress multiplier?
 - **Blocks:** `02_quant/14_TRANSACTION_COST_MODEL.md` (cannot convert its swap-cost sensitivity table into a
   real expected cost without this), `13_BASIS_MODEL.md`, `17_EXPECTED_VALUE.md`, and any signal design bounding
   maximum holding time.
-- **Status:** open with provisional evidence only, now from two distinct sources. (1) Realized-pair evidence,
-  unchanged: 7 completed pairs, holding times roughly 3–13 hours (mean 9.91 hours), 4 profitable and 3
-  loss-making, net +$1.57 after commission. (2) **New 2026-09-16:** a tick-level mean-reversion ("decay") proxy
-  — AR(1) half-life of the `convergence_basis` series is ≈112 minutes at a 1-minute resampling grid, growing to
-  ≈25 hours at a 4-hour grid, with 1-minute-series autocorrelation still at 0.60 after 24 hours. This is
-  additional, distinct evidence (statistical persistence of the raw series, not realized trade durations) and
-  does not resolve Q-004 on its own — see `13_BASIS_MODEL.md` for the full analysis and its limitations
-  (contaminated by a slow within-week drift at coarser grids). Both sources point the same direction
-  (intraday-to-single-day resolution is plausible) but neither individually, nor together, is sufficient for a
-  multi-week conclusion. **New 2026-09-16: `tools/pair_ledger.py`** now maintains a persistent, PairID-keyed
-  ledger (`research/pair_ledger.csv`) that merges each future `--pairs` collection run rather than resetting —
-  this doesn't add evidence by itself (seeded from the same n=7), but it means the realized-pair sample can
-  now accumulate across weeks of repeated runs instead of requiring one large one-off collection to move past
-  n=7. The latest closed-trade snapshot found 0 open positions, so it supplied 0 censored
-  observations. Contradiction to preserve: an earlier account reconciliation separately identified one
-  currently-open 8th pair; the latest snapshot may reflect that position having closed, or a different
-  observation state, but it does not resolve the historical censoring discrepancy. The evidence remains too
-  small and too short (max ~7 days of ticks, max ~13 hours of realized trades) to support a durable conclusion
-  about multi-week behavior.
+- **Status:** open with provisional evidence only, updated 2026-09-16 with a materially larger dataset and one
+  method correction. (1) **Realized-pair evidence, now n=8** (was 7): the previously-open 8th pair closed
+  (entry basis 40.37, exit 40.22, duration 2.16h, net +$0.05 — the shortest-held pair so far), and 4 new pairs
+  opened since and remain open (not this project's output). Updated closed-pair stats: durations 2.16–12.74h,
+  median 11.13h, mean 8.95h, 5 of 8 profitable, still net positive. Still far too small for a multi-week
+  conclusion. `tools/pair_ledger.py`'s persistent ledger (`research/pair_ledger.csv`) is now confirmed working
+  end-to-end — correctly transitioned the 8th pair from open to closed rather than duplicating it, grown to 12
+  total tracked pairs (8 closed, 4 open). (2) **Tick-level mean-reversion ("decay") proxy — re-tested on a
+  45-day/5,111,120-row dataset (was 7-day/707k) and found unreliable, correcting the 2026-09-15 write-up.**
+  Every half-life estimate grew substantially when the window widened (e.g. the 1-minute-grid half-life went
+  from ≈112 minutes to ≈1,437 minutes just from widening the observation window, no method change) — the AR(1)
+  fit's own implied local mean swings by 35 points across resampling grids on the same series, showing the raw
+  dollar `convergence_basis` series is contaminated by the underlying ~8% spot price drift over 45 days and is
+  not stationary enough for this method to measure genuine mean-reversion speed. **Withdrawn as usable Q-004
+  evidence** pending a de-trended re-implementation (proposed: run the same method on the *implied annualized
+  carry rate* series instead, which independently proved far more stationary — see `12_FAIR_VALUE_MODEL.md`).
+  This is a real methodological finding, not just more data: a short-window decay-proxy estimate should not be
+  trusted without testing it at a longer window first. The evidence remains too small and too method-limited
+  to support a durable conclusion about multi-week holding-period behavior.
 
 ## From the project mandate (first milestone)
 
@@ -115,14 +115,21 @@ stress multiplier?
    `14_TRANSACTION_COST_MODEL.md` and Q-004.
 4. Which broker/instrument structure is suitable? — VPFX `XAUUSD.vx`/`GC-Z26` shown viable on margin and hedge
    ratio (D-001); not yet compared against alternatives, and commission/settlement/rollover unconfirmed (Q-002).
-5. Can a $1,000 account safely support 0.01-lot hedged testing? — **yes on margin** (≈$131 combined at
-   0.01/0.01, R-001 mitigated); full answer also needs the transaction-cost and stress analysis still pending.
-6. What data must be collected before choosing entry and exit thresholds? — **largely answered 2026-09-15**:
-   the real tick-level executable-basis distribution now exists (707,580 synchronized rows, 7 days; mean
-   41.45, median 41.24, std 1.60, p05/p95 39.54/44.27 — see `11_SPREAD_DEFINITION.md`), superseding both the
-   two-snapshot table and the M1-bar approximation. Also surfaced a real stale-quote anomaly (basis briefly
-   collapsed to 5.07) feeding R-004. Still missing before thresholds can actually be chosen: fair-value
-   decomposition (`12_FAIR_VALUE_MODEL.md`) and time-to-convergence data (Q-004, `13_BASIS_MODEL.md`).
+5. Can a $1,000 account safely support 0.01-lot hedged testing? — **yes on margin for a single pair**
+   (≈$131 combined at 0.01/0.01, R-001 mitigated); **update 2026-09-16**: the live account currently runs 4
+   concurrent pairs (not this project's output), pushing margin usage to ≈$525 and margin level down to ≈191%
+   (from ≈700–770% for one pair) — still well clear of the broker's stop-out levels, but a real, measured
+   reduction in stress buffer at higher concurrency, see `RISK_REGISTER.md` R-002. Full answer also needs the
+   transaction-cost and stress analysis still pending.
+6. What data must be collected before choosing entry and exit thresholds? — **substantially advanced
+   2026-09-16**: the tick-level executable-basis distribution now spans 45 days / 5,111,120 synchronized rows
+   (was 7 days / 707,580), superseding both the two-snapshot table and the M1-bar approximation. The
+   fair-value carry decomposition (`12_FAIR_VALUE_MODEL.md`) is now validated — the implied annualized rate
+   held stable (4.74%→4.71%) across a 60%-wider time-to-expiry range, passing the model's own central
+   prediction test. The R-004 stale-quote anomaly went from 1 to 3 occurrences, now showing a real weekly
+   clustering pattern (Fridays, ~13:30 UTC). Still missing: time-to-convergence data (Q-004 — the decay-proxy
+   method was tested at this wider scale and found unreliable, a real setback, not just more evidence needed)
+   and Q-002 (rollover/price-source/position-restriction).
 7. What execution latency is acceptable? — open, not yet studied.
 8. What conditions make the strategy economically unviable? — open, blocked on the cost/EV model. Partial,
    sourced answer: a holding period longer than roughly 3–4 weeks under the current swap regime, on its own,

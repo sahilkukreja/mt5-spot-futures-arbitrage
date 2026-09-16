@@ -370,7 +370,7 @@ def collect_tick_data(
             )
         print(
             f"  {label}: {len(df):,} bid/ask ticks "
-            f"({df['time_utc'].iloc[0]} → {df['time_utc'].iloc[-1]})"
+            f"({df['time_utc'].iloc[0]} to {df['time_utc'].iloc[-1]})"
         )
         return df
 

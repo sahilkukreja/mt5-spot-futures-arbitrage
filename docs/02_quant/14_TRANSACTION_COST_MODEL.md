@@ -125,15 +125,32 @@ sample): this is real executable-price evidence of the exact strategy, not a sna
 are comparable in size to round-trip cost, so realized P&L is dominated by small-sample noise, not a
 validated edge. Does not resolve Q-004 — says nothing about multi-week holding behavior.
 
-## Currently open pair (found while reconciling, not previously known to this document)
+## Currently open positions (live, re-checked 2026-09-16 — materially more than previously documented)
 
-`positions_get()` (read-only, 2026-09-15) shows **one pair currently open**, not yet in the closed-trade
-history: `BUY XAUUSD.vx 0.01 @ 4292.80` / `SELL GC-Z26 0.01 @ 4333.17`, both opened at the same instant
-(entry basis ≈40.37). At the time of this check: floating P&L −$9.33 (futures) + $9.23 (spot) ≈ **−$0.10**
-combined, basis has widened slightly to ≈40.47. This is live, real, ongoing exposure on the account right
-now — flagged here factually since it surfaced as a side effect of this reconciliation, not because anything
-about it looks wrong. No automated system exists yet (no MQL5 has been written), so this is not this
-project's output; origin/rationale unknown.
+`positions_get()` (read-only) on 2026-09-15 showed one open pair. **Re-checked live 2026-09-16: four pairs
+are now open concurrently** (8 positions total), all the standard convergence trade (BUY `XAUUSD.vx` / SELL
+`GC-Z26`, 0.01 lot each):
+
+| Pair (fut ticket / spot ticket) | Entry basis | Opened (epoch) |
+|---|---|---|
+| 34232433 / 34232434 | 40.78 | 1789565387 |
+| 34232481 / 34232482 | 40.97 | 1789567978 |
+| 34232580 / 34232581 | 42.26 | 1789569912 |
+| 34232582 / 34232583 | 43.06 | 1789569923 |
+
+Current live basis at check time: `convergence_basis` (Bid `GC-Z26` − Ask `XAUUSD.vx`) = **40.82**, consistent
+with the tick-level distribution already documented (mean 41.43). Account snapshot: balance $999.02, equity
+$1,000.61, **margin $524.56 (4 pairs × ≈$131 each), margin free $476.05, margin level ≈191%** — a material
+drop from the ≈700–770% margin level calculated for a single 0.01/0.01 pair earlier in this document, because
+margin utilization scales with the number of concurrent pairs. Still nowhere near the broker's stop-out level
+(`margin_so_call=100%`, `margin_so_so=50%`, per `account_info()`), but this is a real, live reduction in the
+account's stress buffer that the earlier single-pair margin analysis (`01_research/07_BROKER_RESEARCH.md`,
+`RISK_REGISTER.md` R-001/margin-stress-multiplier candidate) did not model. As before: no automated system
+exists under this project (no MQL5 has been written), so this is not this project's output — origin/rationale
+for the 3 additional concurrent pairs opened since 2026-09-15 is unknown. The mandate's `INITIAL CAPITAL
+PROTECTION` section specifies "one hedge pair at a time initially" for this project's own future live testing;
+that this account already runs 4 concurrently, outside this project's control, is noted factually, not as
+something this project has done or endorses.
 
 ## Discrepancy — resolved
 

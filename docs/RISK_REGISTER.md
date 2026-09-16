@@ -55,10 +55,14 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   still shows 7 real paired convergence trades, held ~3–13 hours each, net +$1.57 after commission —
   consistent with swap being a non-issue when the holding period remains short. But n=7 over ~4 days is too
   small to conclude anything about the multi-week scenario; Q-004 remains open for the true time-to-convergence
-  distribution. Separately: an 8th pair is currently **open** on the account (found while reconciling, not this
-  project's output). Not itself an R-003 orphan-leg event — both legs are open together — but worth noting
-  plainly: there is no automated monitoring or kill switch yet, so this position depends entirely on manual
-  attention.
+  distribution. Separately: **update 2026-09-16 — re-checked live, now 4 pairs open concurrently** (8
+  positions; was 1 pair as of 2026-09-15), all standard convergence pairs, none this project's output. Not
+  itself an R-003 orphan-leg event — every leg has its opposite-direction match, both legs open together in
+  each pair. Combined margin usage has risen to ≈$525 (margin level ≈191%, down from ≈700–770% for a single
+  pair — see `02_quant/14_TRANSACTION_COST_MODEL.md` "Currently open positions"), still well above the
+  broker's 100%/50% stop-out levels but a real, measured reduction in stress buffer from what R-001's
+  single-pair analysis assumed. There is no automated monitoring or kill switch yet, so these positions depend
+  entirely on manual attention.
 - **Consequence:** apparently profitable signals become negative after costs, specifically if the holding
   period before convergence/exit runs into many weeks rather than hours or days.
 - **Severity:** critical
@@ -108,6 +112,12 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
 - **Related, outside this project's control:** a live position opened by someone/something other than this
   project was open on the account as of 2026-09-15 with no automated monitoring (see `14_TRANSACTION_COST_MODEL.md`
   "Currently open pair"); current status not re-checked this session (MT5 tool connection unavailable).
+- **Historical precedent (2026-09-16, `01_research/06_EXISTING_SYSTEM_RESEARCH.md`):** the internal legacy EA
+  (different broker/account) hit this exact failure class at real, severe scale — **408 rejected order-open
+  attempts (`retcode 10044`) in under 50 minutes**, hitting both legs, recurring on a separate calendar day
+  from an earlier, smaller occurrence of the same problem, with no retry ceiling, backoff, or alert visible in
+  the log. Not this project's broker/data — a portability caveat, not a transferable number — but concrete
+  evidence that "no orphan-leg timeout + no retry ceiling" is not a hypothetical failure mode.
 
 ### R-004: Stale or asynchronous quotes create false basis signal
 - **Cause:** spot and futures prices were updated at materially different times or one feed stopped updating.
@@ -144,6 +154,14 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   is documented in `13_BASIS_MODEL.md`, but since this anomaly's own skew (238ms) sits inside that candidate,
   skew alone would still miss it — velocity is the mitigation that actually catches this specific failure mode.
   No numeric velocity threshold is proposed yet (n=1 extreme event is not enough to derive a defensible cutoff).
+- **Update 2026-09-16 — widened the dataset to 45 days (5,111,120 rows) and found this is not a one-off: two
+  more anomalous rows appear, both at 2026-09-04, within a 17-second window of **13:30 UTC** — the same clock
+  time as the original 2026-09-11 event, exactly 7 days apart, **both Fridays**. 2 of the ~6-7 Fridays in the
+  45-day window show this signature. Root cause still not confirmed (no check yet of which specific 8:30am-ET
+  data release, if any, fell on either date; n=2 dates is still a small sample), but this raises the finding
+  from "one observed instance" to "a plausible recurring, roughly-timed event" — see `02_quant/13_BASIS_MODEL.md`
+  for the full row-level detail. Possible mitigation candidate: a fixed no-entry window around 13:30 UTC, not
+  yet sized or proposed as a number (needs more weeks of data to size responsibly, per `NO MAGIC`).
 - **Owner:** Data and execution research
 - **Status:** open
 
@@ -163,6 +181,19 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   detection mechanism (e.g. a scheduled manual check, or broker support confirmation of the rollover date/
   process) — this is the "missing/changed expiry metadata" trigger already named above, now observed directly
   rather than assumed.
+- **Update 2026-09-16 — checked directly whether an old/next contract symbol exists: it doesn't, either way.**
+  `mt5.symbols_get()` and `mt5.symbols_total()` both return exactly **2** symbols for this account, total:
+  `XAUUSD.vx` and `GC-Z26`. No other gold-futures contract month — older or newer — exists anywhere in this
+  terminal's symbol tree (checked with wildcard group queries: `*GC*`, `*GOLD*`, `*Metal*`, `*XAU*`). Two
+  implications: (1) mild reassurance that `GC-Z26` has not been silently swapped for a different contract
+  during this project's data collection — brokers typically add a new contract month as a new symbol name
+  rather than relabeling an existing one, and no second symbol has ever appeared here; (2) a sharper, now
+  concrete version of the rollover risk — **this account currently has no visibility into the next contract
+  month at all**. When `GC-Z26` nears its 25 Nov 2026 expiry, there is no successor symbol already available to
+  roll into; the broker will need to add one, and nothing in this project's tooling would auto-detect or
+  auto-prepare for that. A rollover runbook item (not yet written, belongs in `06_operations/`) should include
+  explicitly requesting/confirming the next contract's symbol from the broker well before expiry, not assuming
+  it will simply appear.
 
 ### R-006: Signal/Risk engine cannot enforce "no trading when costs remove edge" yet
 - **Cause:** `02_quant/14_TRANSACTION_COST_MODEL.md` and `17_EXPECTED_VALUE.md` now both exist (2026-09-16) with
