@@ -20,9 +20,13 @@ __MACOSX/
 measurement_harness/*.csv
 measurement_harness/*.log
 
-# Broker/account exports and reports (may contain account identifiers)
+# Broker/account exports and reports (contain the account number in the
+# filename itself, plus the account holder's full real name and broker
+# details in the content -- never committed, in any export format)
 *.xlsx
-ReportHistory-*.xlsx
+ReportHistory-*
+StatementReport-*
+AccountStatement-*
 
 # Archives (must be unpacked and reviewed before anything is committed)
 *.zip
