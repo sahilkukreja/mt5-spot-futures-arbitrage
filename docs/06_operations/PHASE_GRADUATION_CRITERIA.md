@@ -60,18 +60,27 @@ pre-forward-test stage; D-008 is the first thing to occupy it.
 
 All of the following, in order:
 
-1. `04_testing/34_DEMO_TEST_PLAN.md` Stage 0 (dry run) passes every acceptance test T1–T12.
-2. Stage 1 (20 demo pairs) completes with **zero journal-to-broker reconciliation mismatches**. Its slippage
-   and rejection-rate outputs are discarded per that document's own scope note — they do not count as evidence
-   here, only mechanical correctness does.
-3. `/arb-risk-review` verdict recorded against the **live** plan specifically (the existing verdict was
-   recorded against the demo-only design and does not cover live capital — see `RISK_REGISTER.md` note below).
-4. `/arb-hostile-review` verdict recorded against the **live** plan specifically, for the same reason.
-5. `D-008` accepted in `DECISION_LOG.md`.
-6. The account precondition in `35_1000_USD_LIVE_TEST_PLAN.md` §7 resolved (dedicated account, or existing
-   positions closed) — **open, the account owner's decision, not resolvable by this document.**
+1. `04_testing/34_DEMO_TEST_PLAN.md` Stage 0 (dry run) passes every acceptance test T1–T12. **Done — 12/12
+   PASS, confirmed 2026-09-16.**
+2. ~~Stage 1 (20 demo pairs) completes with zero journal-to-broker reconciliation mismatches.~~ **Removed by
+   explicit account-owner decision, 2026-09-16.** Stage 1 cost zero dollars and was the only pre-live test of
+   this code's real MT5 API integration; this was raised explicitly to the account owner and reaffirmed. Per
+   this project's own practice, a reaffirmed decision is recorded, not overridden. **Compensating measure, in
+   `35_1000_USD_LIVE_TEST_PLAN.md` §8.1.3:** Stage 2's pair 1 carries elevated scrutiny beyond pairs 2–10
+   specifically because it is now the first real-API contact of any kind, not merely the first *live* one.
+   This narrows a real-API integration bug's blast radius to roughly USD 0.50 rather than eliminating the risk
+   Stage 1 existed to catch — the trade-off is explicit, not hidden.
+3. `/arb-risk-review` verdict recorded against the **live** plan specifically. **Done — `APPROVE WITH
+   CONDITIONS`, 2026-09-16, conditions C1–C6 applied.**
+4. `/arb-hostile-review` verdict recorded against the **live** plan specifically. **Done — `READY WITH
+   CONDITIONS` for Stages 0–2 only, 2026-09-16, findings applied. No verdict on Stage 3/4 yet.**
+5. `D-008` accepted in `DECISION_LOG.md`. **Open — eligible now, the account owner's decision to commit real
+   capital.**
+6. The account precondition in `35_1000_USD_LIVE_TEST_PLAN.md` §7. **The account owner states a dedicated
+   account is now open (2026-09-16); not independently verified in this session. The actual precondition —
+   a fresh live read confirming funding and zero other positions — remains open.**
 7. The capital owner explicitly authorizes the budget (USD 149.25 guaranteed, USD 250 hard stop) before Stage
-   2 (the first live order) fires.
+   2 (the first live order) fires. **Open.**
 
 Criterion 6 and 7 are the only two remaining before implementation may begin. This document does not resolve
 either — it only establishes that they, specifically, are what stands between here and LIVE OBSERVATION.

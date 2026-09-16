@@ -247,9 +247,20 @@ acceptance.** Risk-review conditions C1–C6 applied. `/arb-hostile-review` re-r
 catch: the C4 credential fix had been silently undone by the acceptance test written to verify it — T17 still
 said "compiled-in," so hardcoding the account number would have passed the test. Corrected, plus three new
 tests (T18 manual-mode suppression, T19 slippage-vs-sequence trend, T20 stage-gate file) and one new risk
-(L-9, broker-side adaptation to the trial's own repetitive pattern). **What remains before the first live
-order, in order: D-008 accepted (the account owner's decision, now eligible), the dedicated account opened and
-funded, Stage 1 (20 demo pairs) run clean, then §8.1.2's pre-flight checklist.**
+(L-9, broker-side adaptation to the trial's own repetitive pattern).
+
+**Update 2026-09-16 (later still) — Stage 1 skipped; dedicated account stated open.** Both account-owner
+decisions, both recorded: Stage 1 (20-pair demo shakedown, USD 0) is removed from the staged protocol — raised
+as a concern first (it was the only zero-cost test of the real MT5 API integration, and the mandate says no
+stage should be skipped) and reaffirmed, so recorded as the account owner's call, not overridden. Compensating
+measure: Stage 2's pair 1 now carries elevated scrutiny (two extra checks) specifically because it is the
+first real-API contact of any kind, narrowing but not eliminating the risk Stage 1 existed to remove for free.
+New risk R-010. Separately, the account owner states the dedicated live account is now open — not
+independently verified this session (no live MT5 connection available); the pre-flight checklist's
+fresh-live-read requirement is unchanged and is the actual precondition, not the account owner's statement
+alone. **What remains before the first live order, in order: D-008 accepted (the account owner's decision, now
+eligible), the account's funding/zero-positions/mode confirmed via a fresh live read, then §8.1.2's pre-flight
+checklist in full.**
 
 **Earlier the same day — the harness design (Stage C item, §3) was pulled forward and is now written:**
 `04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs

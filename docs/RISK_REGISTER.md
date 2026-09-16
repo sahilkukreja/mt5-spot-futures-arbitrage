@@ -357,6 +357,34 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   conditions C1-C6 applied"
   as a precondition.
 
+### R-010: Stage 1 (demo shakedown) skipped by explicit account-owner decision
+- **Raised:** 2026-09-16
+- **Cause:** the account owner directed skipping Stage 1 (20-pair, USD 0, demo) and proceeding directly to
+  Stage 2 (live pilot). This was raised as a concern before acting on it -- Stage 1 was the only zero-cost
+  test of this project's real MT5 API integration (`OrderSend`/retcode handling, `DEAL_TIME_MSC` population,
+  broker-state reconciliation) before any of it touched live capital, and skipping it directly runs against
+  `PROJECT_MANDATE.md`'s own rule that "no stage should be skipped merely to reach live trading faster." The
+  concern was reaffirmed by the account owner after being stated, which is recorded here as their decision,
+  not silently overridden.
+- **Consequence:** Stage 2's pair 1 is now the first contact this project's execution code has ever had with
+  a real MT5 trading API, not merely the first *live* contact. A defect Stage 1 would have caught for free
+  (a retcode outside the design's whitelist, `DEAL_TIME_MSC` not populating as assumed, reconciliation logic
+  disagreeing with real rather than scripted broker behaviour) will now be discovered, if it exists, with
+  real capital already committed to pair 1 -- roughly USD 0.50 at stake, not USD 0.
+- **Severity:** medium. Bounded by `InpMaxTradeLossUsd` (USD 15) regardless of cause, and further bounded by
+  the stop-and-diagnose rule in `35_1000_USD_LIVE_TEST_PLAN.md` section 8.1.3, which forbids proceeding to
+  pair 2 until every one of pair 1's checks -- including two added specifically because Stage 1 is absent --
+  passes.
+- **Mitigation:** pair 1 receives materially higher scrutiny than pairs 2-10 (section 8.1.3): retcodes are
+  checked against MT5 documentation directly rather than matched against the design's whitelist on faith, and
+  the journal/Trade-History/account-statement cross-check runs three ways instead of two. This narrows the
+  blast radius of a real-API bug; it does not eliminate the risk Stage 1 existed to remove at zero cost. That
+  trade-off is stated plainly in the design document, not hidden.
+- **Trigger/metric:** any check failure at pair 1 specifically, per section 8.1.3's step 4.
+- **Owner:** the account owner, who made this decision.
+- **Status:** open -- accepted risk, by explicit, reaffirmed decision. Not a design defect to be fixed; a
+  documented trade-off to be honoured (elevated pair-1 scrutiny must actually be followed, not skipped too).
+
 ---
 
 No further risks recorded yet.

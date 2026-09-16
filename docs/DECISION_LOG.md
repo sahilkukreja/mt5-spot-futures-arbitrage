@@ -226,3 +226,16 @@ No further decisions recorded yet.
   decision, since it commits USD 149.25 of real capital at a lower bound; nothing in this update makes that
   decision on their behalf. Verdicts and applied conditions: `04_testing/35_1000_USD_LIVE_TEST_PLAN.md`
   sections 6, 8.1, 9, 10, 12; `RISK_REGISTER.md` R-008 and R-009.
+- **Evidence update (2026-09-16, later still) -- Stage 1 skipped by account-owner decision; dedicated account
+  stated open.** Two changes to the trial's own preconditions, both the account owner's calls: (1) Stage 1
+  (20-pair, USD 0, demo shakedown) is removed from the staged protocol -- raised as a concern first (it was
+  the only zero-cost test of the real MT5 API integration, and skipping it runs against the mandate's "no
+  stage should be skipped" rule), reaffirmed by the account owner, and recorded as their decision rather than
+  overridden; compensating measure is elevated scrutiny on Stage 2's pair 1, detailed in
+  `35_1000_USD_LIVE_TEST_PLAN.md` section 8.1.3, narrowing rather than eliminating the risk Stage 1 existed
+  to remove. New risk R-010. (2) The account owner states the dedicated live account (§7) is now open --
+  not independently verified in this session (no live MT5 connection available); the pre-flight checklist's
+  requirement for a fresh, live-read confirmation of funding and zero other positions stands unchanged and is
+  the actual precondition. **Status remains `proposed`** -- neither change accepts D-008 itself, which is
+  still the account owner's decision to make. See `PHASE_GRADUATION_CRITERIA.md`, `RISK_REGISTER.md` R-010,
+  and `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` sections 2, 7, 8, 8.1.

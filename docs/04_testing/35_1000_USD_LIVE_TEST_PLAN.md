@@ -52,15 +52,17 @@ flagged as a blocking mandate violation. Summary of what changed:
   no strategy yet to forward-test — `15_SIGNAL_RESEARCH.md` is unwritten and D-006 has already rejected one
   candidate structure. Completing this trial does **not** graduate the project to the forward test; that
   transition has its own separate criteria, none of which this trial satisfies by itself.
-- Graduation criteria for DEMO TESTING → LIVE OBSERVATION are now written. Restated here: Stage 0 (dry run)
-  passes T1–T12; Stage 1 (20 demo pairs) completes with zero reconciliation mismatches, its slippage/rejection
-  output discarded per §1 above; `/arb-risk-review` and `/arb-hostile-review` verdicts recorded **against this
-  live plan specifically** (the existing verdicts were recorded against the demo-only design and do not cover
-  live capital); D-008 accepted; the account precondition (§7) resolved; the capital owner explicitly
-  authorizes the budget before the first live order.
+- Graduation criteria for DEMO TESTING → LIVE OBSERVATION are now written in
+  `06_operations/PHASE_GRADUATION_CRITERIA.md`. **Status as of 2026-09-16:** Stage 0 done (12/12 PASS);
+  Stage 1 **removed by explicit account-owner decision** (§8 — compensating measure at Stage 2 pair 1, not a
+  substitute); `/arb-risk-review` and `/arb-hostile-review` both done against this live plan specifically
+  (`APPROVE WITH CONDITIONS` and `READY WITH CONDITIONS` for Stages 0–2, respectively); D-008 not yet
+  accepted; the account precondition (§7) stated open by the account owner, not yet independently verified;
+  the capital owner has not yet explicitly authorized the budget for the first live order.
 
-**What remains open:** the account precondition (§7) and re-run risk/hostile verdicts against this document.
-Everything else that blocked implementation is now written.
+**What remains open:** D-008 acceptance, the account precondition's actual live verification (§7), and the
+capital owner's explicit budget authorization before pair 1. Everything else that blocked implementation —
+including both reviews — is now done.
 
 ## 3. What this trial can and cannot deliver
 
@@ -193,55 +195,81 @@ a bounded, small-size measurement trial (worst case per pair is bounded by `InpM
 its cause) but must not be carried forward silently into any future production execution engine design, where
 a genuine per-order risk control would be required.
 
-## 7. Account preconditions — decided 2026-09-16, not yet satisfied
+## 7. Account preconditions — dedicated account opened 2026-09-16, funding/mode not independently verified
 
 **The existing account currently holds 4 open pairs** (not this project's output): margin used USD 524.56,
 equity USD 1,000.61, free margin USD 476.05, **margin level 191%**. Adding one harness pair (USD 129.67) would
 take margin level to **153%** — below the `InpMinMarginLevelPct` guard of 300%, so the harness would reject
-every single fire on that account as currently loaded.
+every single fire on that account as currently loaded. This account and its 4 pairs remain untouched by
+anything in this document.
 
 **Decision: a separate, dedicated live account, funded to USD 1,000, with no other positions.** This isolates
 the measurement's cost accounting from unrelated P&L, and removes any interaction between the harness's margin
-guard and positions it does not control. The existing account and its 4 pairs are untouched by this decision
-and continue independent of D-008.
+guard and positions it does not control.
 
-**This is not yet satisfied — it requires the account owner to actually open and fund the account.** That is
-outside what this project's tooling or this session can do: it requires broker KYC/account-opening steps
-taken by the account owner directly with VPFX (or, if evaluated as an alternative, another broker — no
-alternative has been evaluated; see D-001's own "Risks" on single-broker comparison bias).
+**Status update 2026-09-16: the account owner states this dedicated account is now open.** This was not
+independently verified in this session — there is no live MT5 connection available here to confirm it, and
+none was requested. **The pre-flight checklist (§8.1.2) still requires a fresh, live
+`AccountInfoInteger`/`AccountInfoDouble` read — funded to USD 1,000, zero other positions, correct account
+mode — immediately before Stage 2 fires.** "The account owner says it's open" and "a fresh read confirms it's
+open, funded, and empty" are different levels of evidence; only the second satisfies the checklist. This is
+the same standard applied throughout this project to every other claim — see, for instance, why Stage 0 was
+run four times before being trusted rather than accepted on the first PASS.
 
-**Handling the new account's credentials once it exists:** the same safeguard this project already applies
-holds without exception — the account number and any login credentials are never printed to a committed file,
-never pasted into a doc, and never logged by the harness. Connection details belong in a local, gitignored
-config (the pattern `tools/` already uses), read by the harness at runtime, never hardcoded and never
-committed. When the account exists, the concrete next step is updating this section with the confirmed account
-mode (`ACCOUNT_TRADE_MODE_REAL` for this dedicated account, since the account itself is live even though the
-*first* stages of the staged protocol below still run against a demo account for mechanical validation) and
-funding confirmation — not the credentials themselves.
+**Handling the new account's credentials:** the same safeguard this project already applies holds without
+exception — the account number and any login credentials are never printed to a committed file, never pasted
+into a doc, and never logged by the harness. Connection details belong in a local, gitignored config (the
+pattern `tools/` already uses), read by the harness at runtime, never hardcoded and never committed. This is
+condition C4, and is load-bearing now that a real account number exists — see §8.1.1.
 
 ## 8. Staged protocol
 
-Each stage gated on the previous. **Stages 0–1 involve no live capital.**
+Each stage gated on the previous.
 
 | Stage | Where | n | Cost | Exit criterion |
 |---|---|---:|---:|---|
 | **0 — dry run** | none, simulated injector | — | USD 0 | all of T1–T15 pass |
-| **1 — demo shakedown** | demo | 20 | USD 0 | journal-to-broker reconciliation, zero mismatches. **Slippage output discarded — not valid, see §1** |
+| ~~**1 — demo shakedown**~~ | ~~demo~~ | ~~20~~ | ~~USD 0~~ | **SKIPPED — account owner's explicit decision, 2026-09-16. See note below.** |
 | **2 — live pilot** | live | 10 | ≈ USD 5 | supervised; fills, timestamps, both reference prices, clock offset all sane |
 | **3 — live stratum A** | live | 200 | ≈ USD 100 | unconditional distribution collected |
 | **4 — live stratum B** | live | 100 | ≈ USD 50 | condition-triggered quota collected |
 | **5 — analysis** | — | — | — | feeds `17_EXPECTED_VALUE.md`, Q-003, R-003 |
 
-Stage 2 is where a live-only defect would surface; it is deliberately small and supervised.
+**Stage numbering is kept as originally assigned, including the gap, rather than renumbered** — `InpStage2Mode`,
+`stage2_confirmed.flag`, T18, and every other cross-reference in this document already name "Stage 2"
+specifically. Renumbering would touch all of them and risk the exact kind of drift already caught once in this
+document (hostile review FF-6, where a correction in one section silently failed to propagate to another).
+
+**Stage 1 was removed by explicit account-owner decision, not a design choice.** Recorded plainly: Stage 1 cost
+**zero dollars** (demo account) and was the only test of this code's real MT5 API integration —
+`OrderSend`/retcode behaviour, `DEAL_TIME_MSC` population, reconciliation against actual (not scripted) broker
+state — before any of it touched live capital. This was raised explicitly and reaffirmed; per this project's
+own practice, a reaffirmed decision is the account owner's to make and is recorded, not silently overridden.
+**The compensating measure:** Stage 2 now begins with a single pair, treated with materially higher scrutiny
+than pairs 2–10, since it is not just the first *live* pair but the first *real-API* contact of any kind in
+this project's execution code — see §8.1.1 and §8.1.3. This narrows the blast radius of a real-API integration
+bug from "discovered somewhere in 10 pairs" to "discovered at pair 1, ≈USD 0.50 at risk" — smaller than
+skipping straight to a full Stage 2 burst, but still strictly more exposure than the USD 0 that Stage 1 would
+have cost. That trade-off is explicit, not hidden.
+
+Stage 2 is where a live-only defect would surface; it is deliberately small and supervised, and now carries
+more weight than originally designed for exactly that reason.
 
 ## 8.1 Stage 2 — operational procedure (planned 2026-09-16, not yet executable)
 
 **Status: planned, not authorized.** This section makes "supervised; fills, timestamps, both reference
 prices, clock offset all sane" concrete and checkable. It does not change the gate: Stage 2 still requires,
-in order, D-008 accepted, the dedicated account opened and funded, and Stage 1 (20 demo pairs) completed
-with zero reconciliation mismatches. Both reviews are now done against this document — `/arb-risk-review`
-(`APPROVE WITH CONDITIONS`, C1–C6 applied) and `/arb-hostile-review` (`READY WITH CONDITIONS` for Stages 0–2
-only, FF-6/UA-1/UA-2/UA-3/AS-1 applied). The remaining three items are not done.
+in order, D-008 accepted and the dedicated account's funding/mode confirmed via a fresh live read (§7). Both
+reviews are done against this document — `/arb-risk-review` (`APPROVE WITH CONDITIONS`, C1–C6 applied) and
+`/arb-hostile-review` (`READY WITH CONDITIONS` for Stages 0–2 only, FF-6/UA-1/UA-2/UA-3/AS-1 applied). Stage 1
+(20-pair demo shakedown) is **removed by explicit account-owner decision** (§8) — not satisfied, not
+applicable. The two remaining items are not done.
+
+**Pair 1 carries more weight than pairs 2–10, precisely because Stage 1 was skipped.** With the demo shakedown
+in place, pair 1 of Stage 2 would have been merely the first *live* pair, following 20 pairs' worth of
+real-API validation on demo. Without it, pair 1 is the first time `OrderSend`, retcode handling,
+`DEAL_TIME_MSC`, and broker-state reconciliation have run against any real MT5 server at all in this
+project's execution code — Stage 0 touched none of them, by design. §8.1.3 treats pair 1 accordingly.
 
 ### 8.1.1 Design decisions specific to Stage 2
 
@@ -271,11 +299,14 @@ only, FF-6/UA-1/UA-2/UA-3/AS-1 applied). The remaining three items are not done.
       rationale corrected, stage-gate file added)
 - [x] Risk-review conditions C1–C6 applied to this document (2026-09-16)
 - [ ] D-008 accepted in `DECISION_LOG.md`
-- [ ] Dedicated account open, funded to USD 1,000, zero other positions, confirmed via a fresh
-      `AccountInfoInteger`/`AccountInfoDouble` read immediately before starting
-- [ ] Stage 1 (20 demo pairs) completed, zero reconciliation mismatches, its slippage/rejection output
-      explicitly discarded (not treated as evidence)
-- [ ] `HarnessStage0_DryRun.mq5`'s successor Stage 1/2 code compiled from the exact reviewed commit, 0 errors
+- [ ] Dedicated account open (account owner confirms it is, 2026-09-16 — not yet independently verified),
+      funded to USD 1,000, zero other positions, confirmed via a fresh `AccountInfoInteger`/`AccountInfoDouble`
+      read immediately before starting — this read is the actual precondition, not the prior confirmation
+- [x] ~~Stage 1 (20 demo pairs) completed~~ — **removed by explicit account-owner decision (§8).** Not
+      satisfied, not applicable. Compensating measure: pair 1 of this checklist's own run gets the elevated
+      scrutiny described above and in §8.1.3, since it is now the first real-API contact of any kind
+- [ ] Stage 2's successor code, compiled from the exact reviewed commit, 0 errors — this is now the first
+      code in this project to call any real MT5 trading API; Stage 0's clean compile does not cover it
 - [ ] Account whitelist and credentials confirmed loaded from the gitignored runtime config, not source
 - [ ] Current session/time checked against 8.1.1's window guidance (not Friday, not near 13:30 UTC, not near
       a session boundary, not within 14 days of the 25 Nov 2026 expiry hard stop)
@@ -283,12 +314,26 @@ only, FF-6/UA-1/UA-2/UA-3/AS-1 applied). The remaining three items are not done.
 
 ### 8.1.3 Per-pair procedure (repeated 10 times, one at a time)
 
+**Pair 1 gets an additional round of checks before pair 2 is ever attempted, because Stage 1 was skipped.**
+With no demo shakedown behind it, pair 1 is where a defect in the real-API integration itself — not just the
+state-machine logic Stage 0 already proved — would first appear. Steps 1–4 below apply to every pair; the
+**bold** items in step 4 apply to pair 1 specifically, in addition to the rest.
+
 1. Operator triggers one pair manually.
 2. Operator notes, independently of the EA, the quoted bid/ask for both legs at that moment (a screenshot or
    manual note in the terminal — a second, human-sourced data point to cross-check the EA's own recorded
    reference prices against).
 3. Pair runs to completion (`CLOSED` or `CLOSED_ORPHAN`) or hits a timeout/guard.
 4. **Before triggering the next pair**, operator verifies for this pair:
+   - **(pair 1 only) the exact retcode returned by the broker for each leg is looked up directly against
+     current MT5 documentation, not matched against this design's whitelist on faith** — the whitelist
+     (`IsTransientRetcode`, `ShouldRetry`-style) was written from the legacy system's experience and this
+     project's own reading of MT5's retcode reference, never against this specific broker's actual live
+     responses, because nothing in this project has ever received one before pair 1;
+   - **(pair 1 only) the journal file, the terminal's Trade History, and the account's own statement/report
+     are cross-checked three ways, not two** — the extra check specifically validates that `FileWriteString`
+     behaves identically against a live account's file sandbox as it did in Stage 0's, since Stage 0 never
+     exercised this under real trading conditions;
    - fill prices in the EA's CSV row are within a plausible band of the independently-noted quote (not
      wildly off — a sanity check, not a formal statistical test at n=1);
    - `t_fill` used `DEAL_TIME_MSC` (millisecond-resolution, not the 1-second `DEAL_TIME`) — check directly
@@ -298,10 +343,17 @@ only, FF-6/UA-1/UA-2/UA-3/AS-1 applied). The remaining three items are not done.
    - the terminal's own Trade History/Journal tab for this ticket agrees with the EA's journal row — an
      independent cross-check, not just trusting the EA's own bookkeeping;
    - no kill switch trip, no `RECONCILIATION_REQUIRED`, no unexpected `ORPHANED`.
-5. If any check fails: **stop. Do not trigger pair 6 through 10.** Diagnose first, exactly as Stage 0's three
-   real bugs were diagnosed from evidence rather than guessed at. A failure at pair 3 is a more valuable,
-   cheaper finding than the same failure discovered at pair 47.
-6. If all checks pass: proceed to the next pair.
+5. **All of pair 1's checks — the standard set and the two additional ones above — must pass before pair 2 is
+   ever triggered.** This is the single most load-bearing checkpoint in this whole document, precisely because
+   it is the first point where this project's own Stage 0 evidence (compiled clean, 12/12 PASS, entirely
+   simulated) meets a real broker for the first time. Pair 1 passing does not mean "the mechanism works" the
+   way Stage 0 passing did — it means one specific set of conditions produced one clean result. Do not
+   generalise from it any further than that.
+6. If any check fails, at pair 1 or any later pair: **stop. Do not trigger the next pair.** Diagnose first,
+   exactly as Stage 0's three real bugs were diagnosed from evidence rather than guessed at. A failure at
+   pair 3 is a more valuable, cheaper finding than the same failure discovered at pair 47 — and a failure at
+   pair 1 specifically is the cheapest and most valuable of all, at roughly USD 0.50 of exposure.
+7. If all checks pass: proceed to the next pair.
 
 ### 8.1.4 Exit criteria, made concrete
 
@@ -385,7 +437,8 @@ budgeted at n=300 and USD 149.25 guaranteed cost, capped by a latching USD 250 c
 ## 12. Gate status
 
 Authorizes nothing. Requires, in order: Phase graduation criteria written (§2, done) → account precondition
-resolved (§7, decided, not yet satisfied) → `/arb-risk-review` re-run (done 2026-09-16, `APPROVE WITH
+(§7, dedicated account stated open by the account owner, not yet independently verified) → `/arb-risk-review`
+re-run (done 2026-09-16, `APPROVE WITH
 CONDITIONS` C1–C6, applied) → `/arb-hostile-review` re-run (**done 2026-09-16, `READY WITH CONDITIONS` for
 Stages 0–2 only** — FF-6, UA-1, UA-2, UA-3, AS-1, all applied; **no verdict on Stage 3/4**, which requires
 its own review once Stage 2's results exist) → D-008 accepted (**the account owner's decision — now eligible,
