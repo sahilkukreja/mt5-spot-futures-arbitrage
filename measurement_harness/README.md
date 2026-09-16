@@ -20,10 +20,11 @@ needs a full, reviewed design first.
 
 | File | Stage | Status |
 |---|---|---|
-| `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | Compiles clean (MetaEditor64, 0 errors). See "Verification" below. |
+| `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | **Verified.** 12/12 PASS, confirmed by real execution, 2026-09-16. |
+| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | Compiles clean (MetaEditor64, 0 errors, 2026-09-17). **Never run.** Places real orders. See "What Stage 2 is" below before touching it. |
 
-Stage 1 (demo) and Stage 2+ (live) code does not exist yet and is blocked — see `docs/ROADMAP.md` and
-`docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` for exactly what's still open before either can be written.
+Stage 1 (demo shakedown) was skipped by explicit account-owner decision — see `RISK_REGISTER.md` R-010 and
+`docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 8. No Stage 1 file exists or will.
 
 ## What Stage 0 is
 
@@ -112,3 +113,51 @@ simulated broker ledger — which proves the **persistence contract** (file + br
 reconstruct correctly), but not OS-level crash safety of the file write itself (e.g., a write that's flushed
 to the OS but not yet durable to disk when power is lost). A real Stage 1 supervised-restart test would still
 be worth doing later for that reason.
+
+## What Stage 2 is
+
+`HarnessStage2_LivePilot.mq5` places real orders. It reuses Stage 0's proven state machine, idempotency
+scheme, and retry whitelist exactly, with every simulated call replaced by the real MT5 equivalent —
+`OrderSend` against `MqlTradeRequest`, `HistoryDealsTotal`/`HistoryDealGetTicket` for idempotency checks
+against actual broker history, `PositionsTotal`/`PositionSelectByTicket` for startup reconciliation, and
+`HistoryDealGetInteger(..., DEAL_TIME_MSC)` for authoritative fill times. Full design:
+`docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` sections 5, 6, 8.1, 9.
+
+**It fires exactly one pair per explicit button click on the chart — never on a timer, tick, or init.**
+`InpMaxPairs` defaults to **1**. Raise it only after that first pair has been fully verified against every
+item in section 8.1.3's checklist.
+
+**Compiled clean. Never run.** Stage 0 needed four real runs and three real bug fixes before it was
+trustworthy, and that was against a fully scripted, deterministic simulated broker with zero real-world
+variance. This file has faced neither a simulated nor a real broker yet. A clean compile is not evidence it
+works — it is evidence it has no *syntax* defects. Pair 1's elevated-scrutiny procedure in the design doc
+exists specifically because of this gap: Stage 1 (the demo shakedown that would normally have absorbed this
+risk for zero cost) was skipped by explicit account-owner decision (`RISK_REGISTER.md` R-010), so pair 1 is
+the very first contact any of this project's code has had with a real MT5 API.
+
+### Setup required before this file can run at all
+
+1. **Create the whitelist config file, in the terminal's own `MQL5/Files/` folder — not in this repository.**
+   One line: `AccountNumber=<your account number>`. This file lives entirely outside the git working tree
+   (a different folder on disk), so it can never be accidentally committed regardless of `.gitignore`. The EA
+   refuses to initialise if this file is missing, malformed, or doesn't match the account currently logged in.
+2. **Verify the dedicated live account's funding and position count yourself, directly in the terminal.**
+   This project has no live MT5 connection available to do that independently. The account owner stated the
+   account is open (`docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §7) — this has not been independently
+   confirmed, and the EA's own `StartupReconciling()` will refuse to start if it finds any open position
+   bearing its magic number, but it cannot verify funding or confirm the account is otherwise empty of
+   *unrelated* positions.
+3. **Read `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 8.1.2's full pre-flight checklist** before
+   attaching this EA to a chart. It is not optional reading.
+
+### What is intentionally not yet implemented
+
+- **Realized P&L is not tracked.** `InpMaxDailyLossUsd`/`InpMaxCumulativeLossUsd` are enforced only at the
+  pre-trade budget-check stage, using the worst-case `InpMaxTradeLossUsd` estimate — not from actual realized
+  profit/loss summed after each pair closes. This is a real, deliberate gap, flagged in the code at the exact
+  point it matters (`RunOnePair()`, search for "realized_loss left at 0"). Do not raise `InpMaxPairs` beyond
+  a handful of manually-supervised pairs until this is closed.
+- **The Stage 3/4 automated scheduler and the `stage2_confirmed.flag` stage-gate file (T20) do not exist in
+  this file.** This build is scoped to Stage 2's manual single-pair procedure only, matching the account
+  owner's explicit request to test with one pair first. Building the automated scheduler is separate,
+  later work, gated on Stage 2's own results.

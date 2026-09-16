@@ -180,9 +180,13 @@ No further decisions recorded yet.
   `17_EXPECTED_VALUE.md` must say so rather than substituting an assumption.
 
 ### D-008: Move the execution measurement trial from demo to the live USD 1,000 / 0.01-lot account
-- **Status:** proposed — supersedes the measurement scope of D-007 (which is reduced to mechanical validation
-  on demo). Requires Phase graduation criteria, the account precondition, a re-run `/arb-risk-review` and a
-  re-run `/arb-hostile-review` before implementation.
+- **Status:** **accepted, 2026-09-17.** Superseded the measurement scope of D-007 (reduced to mechanical
+  validation on demo). Phase graduation criteria, `/arb-risk-review` (`APPROVE WITH CONDITIONS`, C1–C6
+  applied) and `/arb-hostile-review` (`READY WITH CONDITIONS`, Stages 0–2 only, findings applied) are all
+  done against the live plan specifically. **Acceptance trigger:** the account owner directed
+  implementation of the Stage 2 code ("continue with implementation so we can test with 1 pair of 0.01
+  lot") — treated as acceptance in substance, since that instruction cannot be carried out without it, and
+  stated back to the account owner as such at the time rather than assumed silently.
 - **Date:** 2026-09-16
 - **Decision:** Run the execution measurement trial on the live account at 0.01/0.01 lot, n=300, budgeted at
   **USD 149.25 guaranteed cost (14.93% of the capital ceiling)**, capped by a **latching USD 250 cumulative-loss

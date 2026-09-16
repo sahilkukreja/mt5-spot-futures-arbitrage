@@ -262,6 +262,23 @@ alone. **What remains before the first live order, in order: D-008 accepted (the
 eligible), the account's funding/zero-positions/mode confirmed via a fresh live read, then §8.1.2's pre-flight
 checklist in full.**
 
+**Update 2026-09-17 — D-008 accepted; Stage 2 implemented and compiles clean; never run.** The account owner
+directed implementation ("continue with implementation so we can test with 1 pair of 0.01 lot") — treated as
+D-008 acceptance in substance, since the request cannot be carried out without it, and stated back as such
+rather than assumed silently. `measurement_harness/HarnessStage2_LivePilot.mq5` now exists: reuses Stage 0's
+proven state machine, idempotency scheme and retry whitelist exactly, with every simulated call replaced by
+the real MT5 equivalent (`OrderSend`, `HistoryDealsTotal`/`HistoryDealGetTicket` for idempotency checks
+against actual broker history, `PositionsTotal` for startup reconciliation, `DEAL_TIME_MSC` for fill times).
+Fires exactly one pair per manual button click, `InpMaxPairs` defaults to 1. Compiled 0 errors. Account
+whitelist (C4) verified genuinely implemented — grep-confirmed no account number anywhere in source, read
+only from a local config file outside the git working tree.
+
+**This is not evidence it works.** Stage 0 needed four real runs and three real bug fixes before it was
+trustworthy, against a fully scripted, deterministic simulated broker. This file has faced no broker at all
+yet, simulated or real. One precondition remains genuinely open: live verification of the dedicated account's
+funding and position count, which needs a live MT5 connection this project doesn't currently have. Everything
+else the gate required is done.
+
 **Earlier the same day — the harness design (Stage C item, §3) was pulled forward and is now written:**
 `04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs
 `/arb-risk-review` and `/arb-hostile-review` before any MQL5. Pulling it ahead of A4 is defensible because the

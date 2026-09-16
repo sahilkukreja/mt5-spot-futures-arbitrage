@@ -1,12 +1,14 @@
 # USD 1,000 / 0.01 Lot Live Test Plan — Execution Measurement Trial
 
-Status: **PROPOSED — design only. NOT APPROVED. NOT IMPLEMENTED.**
+Status: **ACCEPTED (D-008, 2026-09-17) — implemented, not yet run.** Reviews done, conditions applied,
+D-008 accepted. `measurement_harness/HarnessStage2_LivePilot.mq5` compiles clean and has never been run.
 Supersedes the live-measurement scope of `34_DEMO_TEST_PLAN.md` (D-007), which is reduced to mechanical
-validation only. Proposed as **D-008**. Requires a re-run `/arb-risk-review`, a re-run `/arb-hostile-review`,
-written Phase graduation criteria (§2), and D-008 accepted in `DECISION_LOG.md` before any MQL5 is written.
+validation only.
 
-**This document does not authorize live trading.** It specifies what a live trial would have to look like to
-be worth its cost. The decision to fund it is the account owner's alone.
+**Compiling clean does not authorize firing it.** §12's pre-flight checklist is the actual gate, and its one
+remaining open item — live verification of the dedicated account's funding and position count — has not been
+done. The decision to actually click the trigger button is the account owner's alone, same as the decision
+to fund the trial was.
 
 ---
 
@@ -298,16 +300,19 @@ project's execution code — Stage 0 touched none of them, by design. §8.1.3 tr
       2026-09-16), and its conditions applied (T17 corrected, T18–T20 added, L-9 added, `InpMaxPairsPerDay`
       rationale corrected, stage-gate file added)
 - [x] Risk-review conditions C1–C6 applied to this document (2026-09-16)
-- [ ] D-008 accepted in `DECISION_LOG.md`
+- [x] D-008 accepted in `DECISION_LOG.md` (2026-09-17, triggered by the account owner's implementation request)
 - [ ] Dedicated account open (account owner confirms it is, 2026-09-16 — not yet independently verified),
       funded to USD 1,000, zero other positions, confirmed via a fresh `AccountInfoInteger`/`AccountInfoDouble`
       read immediately before starting — this read is the actual precondition, not the prior confirmation
 - [x] ~~Stage 1 (20 demo pairs) completed~~ — **removed by explicit account-owner decision (§8).** Not
       satisfied, not applicable. Compensating measure: pair 1 of this checklist's own run gets the elevated
       scrutiny described above and in §8.1.3, since it is now the first real-API contact of any kind
-- [ ] Stage 2's successor code, compiled from the exact reviewed commit, 0 errors — this is now the first
-      code in this project to call any real MT5 trading API; Stage 0's clean compile does not cover it
-- [ ] Account whitelist and credentials confirmed loaded from the gitignored runtime config, not source
+- [x] Stage 2's successor code, `measurement_harness/HarnessStage2_LivePilot.mq5`, compiled 0 errors
+      (2026-09-17). **Never run — a clean compile is not evidence it works, see the file's own README entry.**
+- [ ] Account whitelist and credentials confirmed loaded from the gitignored runtime config, not source —
+      implemented in code (`ReadWhitelistedAccount()`, reads `stage2_live_config.txt` from `MQL5/Files/`,
+      grep-verified to contain no hardcoded account number) — **the config file itself must still be created
+      locally by the operator before first run; it does not exist yet**
 - [ ] Current session/time checked against 8.1.1's window guidance (not Friday, not near 13:30 UTC, not near
       a session boundary, not within 14 days of the 25 Nov 2026 expiry hard stop)
 - [ ] Operator present and able to watch the run continuously — Stage 2 is not a "start and walk away" stage
@@ -436,13 +441,21 @@ budgeted at n=300 and USD 149.25 guaranteed cost, capped by a latching USD 250 c
 
 ## 12. Gate status
 
-Authorizes nothing. Requires, in order: Phase graduation criteria written (§2, done) → account precondition
-(§7, dedicated account stated open by the account owner, not yet independently verified) → `/arb-risk-review`
-re-run (done 2026-09-16, `APPROVE WITH
-CONDITIONS` C1–C6, applied) → `/arb-hostile-review` re-run (**done 2026-09-16, `READY WITH CONDITIONS` for
-Stages 0–2 only** — FF-6, UA-1, UA-2, UA-3, AS-1, all applied; **no verdict on Stage 3/4**, which requires
-its own review once Stage 2's results exist) → D-008 accepted (**the account owner's decision — now eligible,
-not yet made**) → `/arb-implement` Stage 0 only.
+Updated 2026-09-17. Requires, in order: Phase graduation criteria written (§2, done) → account precondition
+(§7, dedicated account **stated** open by the account owner, still not independently verified — the one item
+below that remains genuinely open) → `/arb-risk-review` re-run (done 2026-09-16, `APPROVE WITH CONDITIONS`
+C1–C6, applied) → `/arb-hostile-review` re-run (done 2026-09-16, `READY WITH CONDITIONS` for Stages 0–2
+only — FF-6, UA-1, UA-2, UA-3, AS-1, all applied; **no verdict on Stage 3/4**, which requires its own review
+once Stage 2's results exist) → **D-008 accepted, 2026-09-17** (see `DECISION_LOG.md`) → `/arb-implement`
+Stage 0 (done, verified) **and Stage 2's code** (`HarnessStage2_LivePilot.mq5`, compiled 0 errors, **never
+run**).
+
+**What this means concretely: every written precondition is satisfied except one.** The only thing standing
+between this document and a real order is §8.1.2's pre-flight checklist — principally the live account
+funding/position-count verification, which requires a live MT5 connection this project does not currently
+have, and creating the local (never-committed) whitelist config file. Compiling clean is not the same
+standard of evidence this project has held itself to elsewhere — Stage 0 needed four real runs to be trusted.
+Pair 1 of Stage 2 is where that same standard gets applied to real capital for the first time.
 
 **Stage 0 is separately verified** (`measurement_harness/HarnessStage0_DryRun.mq5`, 12/12 PASS, confirmed
 2026-09-16 — see `34_DEMO_TEST_PLAN.md`). That satisfies "Stage 0 only" above. **Stage 2 specifically** is

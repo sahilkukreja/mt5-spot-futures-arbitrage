@@ -14,7 +14,7 @@ document, the document is right and this file is stale — fix it. Last synced: 
 |---|---|
 | Economics | **NOT PASSED** — but see D-006: one structure is now definitively rejected |
 | Design | **NOT PASSED** — `20_SYSTEM_ARCHITECTURE.md`, `22_STATE_MACHINE.md` are PROPOSED/uncalibrated |
-| Implementation | **NOT PASSED** — no MQL5. `src/` is empty and stays empty |
+| Implementation | **NOT PASSED for the production system** — `src/` is empty and stays empty. **D-008's measurement instrument is a stated exception**: `measurement_harness/HarnessStage0_DryRun.mq5` is verified (12/12), `HarnessStage2_LivePilot.mq5` compiles clean and places real orders but has never run. D-008 accepted 2026-09-17. See `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §12. |
 
 Full picture, always current: **`docs/ROADMAP.md`**. Read it before answering any "what next" question.
 
@@ -97,7 +97,10 @@ the offset has not been established yet.
 
 - USD 1,000 experimental ceiling. Capital preservation outranks return.
 - No martingale, grid averaging, loss-recovery sizing, or hidden directional exposure.
-- No live trading. No MQL5 before the design gate.
+- No live trading **of a strategy**. No MQL5 for the production system before the design gate. D-008's
+  bounded, quarantined measurement instrument (zero signal logic, zero profit objective) is a stated
+  exception, reviewed and accepted on its own terms — never precedent for anything else. See D-008,
+  condition C6.
 - `legacy/` is reference and lessons-learned **only** — never an architecture, strategy, or parameter baseline.
 - Never reproduce or commit the credentials found in `legacy/` (MT5 demo password, Telegram bot token).
 - Never print or commit the account number.
