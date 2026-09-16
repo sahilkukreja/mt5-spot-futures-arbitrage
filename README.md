@@ -36,6 +36,8 @@ legacy/                    Raw, UNREVIEWED dump of the prior EA project. Gitigno
                             committed until manually reviewed and sanitized into reference/legacy/.
 
 src/                       Empty. No implementation until the design gate in docs/03_system_design/ passes.
+measurement_harness/       Quarantined MQL5 for the execution measurement harness (docs/04_testing/34, 35).
+                            Never a source for src/ -- same rule as legacy/. See its own README.
 tools/                     Read-only research/data-collection scripts (e.g. MT5 terminal queries). Not the
                             trading system — never places, modifies, or closes an order. See tools/README.md.
 research/                  Output of tools/ scripts and other local data/notebooks. Version-controlled (see
