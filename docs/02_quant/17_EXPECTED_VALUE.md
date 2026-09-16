@@ -247,6 +247,12 @@ purchased. D-008's stratified design (200 unconditional + 100 condition-triggere
 weights) buys a conditional **median and IQR** and a rough p90 — the most the budget reaches — but not a
 defensible p95.
 
+**This is a mandate gap, not just a project-derived one (risk review condition C1, 2026-09-16).**
+`PROJECT_MANDATE.md` → "LIVE TEST SUCCESS CRITERIA" explicitly asks *"What is P95 slippage?"* as a question
+the first live phase should answer. D-008, at its budgeted size, structurally cannot answer it — record this
+plainly rather than letting a later reviewer check that criterion off against an unconditional or weakly
+conditional number once D-008's data exists. See `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §3.1.
+
 **Consequence for the mandate's gate.** `Net Executable Edge > Required Safety Margin` cannot be evaluated as
 this document currently specifies it. Three honest options, none of them chosen here:
 

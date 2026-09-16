@@ -327,8 +327,16 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
 - **Trigger/metric:** whether C1-C6 are applied to the document before Stage 2's pre-flight checklist runs;
   whether the account whitelist is verified as config-sourced, not hardcoded, before any live order.
 - **Owner:** whoever implements Stage 1/2 code.
-- **Status:** open -- C1-C6 not yet applied to the document. Blocks Stage 2's own pre-flight checklist
-  (`35_1000_USD_LIVE_TEST_PLAN.md` section 8.1.2), which already lists "risk-review conditions C1-C6 applied"
+- **Status:** update 2026-09-16 -- C1-C6 applied to `35_1000_USD_LIVE_TEST_PLAN.md` (sections 1, 3.1, 6, 11)
+  and `17_EXPECTED_VALUE.md` (C1). The account-whitelist conflict (C4) is corrected in the document; whether
+  it is correctly *implemented* in code is still unverified and remains this entry's live concern until Stage
+  1/2 code exists and is checked against it. `InpMaxTradeLossUsd`/`InpMaxPairsPerDay` (C2) and the
+  slippage-cap non-existence statement (C3) are documented; both remain UNCALIBRATED starting values like
+  every other guard in the design, not approved production parameters. Still open pending
+  `/arb-hostile-review` re-run against the corrected document, and pending Stage 1/2 implementation actually
+  matching what is now specified. Originally: "open -- C1-C6 not yet applied to the document." Blocks Stage 2's
+  own pre-flight checklist (`35_1000_USD_LIVE_TEST_PLAN.md` section 8.1.2), which already lists "risk-review
+  conditions C1-C6 applied"
   as a precondition.
 
 ---

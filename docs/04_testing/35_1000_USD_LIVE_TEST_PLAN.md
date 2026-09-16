@@ -21,11 +21,21 @@ Live replaces it with a different one: **every measurement costs real money and 
 
 | | Value |
 |---|---|
-| Cost per pair (measured, not assumed) | **USD 0.4975** — spread USD 0.3975 + futures commission USD 0.10 |
-| Target sample | **n = 300** |
-| Guaranteed cost at n=300 | **USD 149.25 — 14.93% of the USD 1,000 ceiling** |
+| Cost per pair, stratum A (unconditional, n=200) | **USD 0.4975** — spread USD 0.3975 + futures commission USD 0.10, at the *median* spread |
+| Cost per pair, stratum B (condition-triggered, n=100) | **Somewhat higher, not stated as a single number** — see note below |
+| Target sample | **n = 300** (200 + 100) |
+| Guaranteed cost at n=300, lower bound | **USD 149.25 — 14.93% of the USD 1,000 ceiling** |
 | Plus slippage (the unknown being bought) | at USD 0.50/pair → USD 299 total (29.9%); at USD 1.00/pair → USD 449 (44.9%) |
 | Hard cumulative-loss stop | **USD 250 (25% of capital)** — latching, see §6 |
+
+**Correction (risk review C5, 2026-09-16):** the USD 149.25 lower bound assumes every pair pays the
+*unconditional median* spread. That holds for stratum A by construction, but stratum B (§4) deliberately
+fires when spread already exceeds 1.5× median or velocity exceeds p99 — by design, its 100 pairs sample
+*above-median* spread conditions, so their average round-trip cost will run somewhat higher than USD 0.4975.
+This is not stated as a precise number here because it depends on exactly how far above threshold each
+trigger fires, which is not knowable in advance — but it should not be read as uniform across all 300 pairs.
+It does not change the safety picture: the USD 250 cumulative-loss stop bounds the true worst case regardless
+of which line item absorbs it.
 
 This is a deliberate, budgeted purchase of information. It is **not** a trade, has **no** profit objective,
 and its P&L is a cost line, never a success criterion.
@@ -84,6 +94,16 @@ unconditional p95 is not — it would understate the margin and look rigorous do
 slippage is conclusive. If median slippage alone exceeds roughly USD 3–4 against the measured USD 7.91 median
 intraday basis range, no intraday signal on this pair can work, and n≈100 settles it for about USD 50. The
 trial can **kill** the thesis cheaply and correctly. It can never **clear** it.
+
+**Condition C1, applied 2026-09-16 — this is also a mandate gap, not just a project-derived one.**
+`PROJECT_MANDATE.md` → "LIVE TEST SUCCESS CRITERIA" asks explicitly *"What is P95 slippage?"* as one of the
+questions the first live phase should answer. This trial, at this budget, **cannot fully answer that
+question** — only a conditional median/IQR and a rough p90 (§4, stratum B), never a defensible conditional
+p95. This must not be discovered later by someone checking that mandate criterion off against an
+unconditional or weakly-conditional number. Record it here, explicitly, before Stage 3 begins: **the mandate's
+own "P95 slippage" success criterion will be answered only partially by this trial**, for the structural
+reason given above, not from any shortfall in execution. The same note must appear in `17_EXPECTED_VALUE.md`
+wherever this trial's output is used to inform the Required Safety Margin.
 
 ## 4. Sampling design — stratified, with recorded weights
 
@@ -147,17 +167,30 @@ Beyond the demo design's guards, all of which still apply:
 | `InpMaxPairs` | 300 | budget |
 | `InpMaxCumulativeLossUsd` | **250** | 25% of capital. Latching. Caps the "slippage is USD 1/pair" scenario, which would otherwise reach USD 449 unremarked |
 | `InpMaxDailyLossUsd` | **40** | 4% of capital/day; forces the run across multiple sessions and limits single-day damage |
+| `InpMaxTradeLossUsd` | **15** *(new, condition C2)* | per-pair fail-safe. Round trip (~USD 0.50) + worst-case orphan exposure (~USD 4.85, from the orphan-timeout row below) + headroom for a single elevated-spread/slippage event, rounded up. Should almost never bind in normal operation — it exists to catch the single anomalous pair, not to be a routine limit. UNCALIBRATED like every other value here |
+| `InpMaxPairsPerDay` | **50** *(new, condition C2)* | closes a real gap: `InpMaxDailyLossUsd` bounds dollars/day but not *count*/day — if realized cost per pair runs unexpectedly low, a dollar-only cap would not stop an unexpectedly large number of fires in one session. 50/day still completes the full n=300 well within a week even if hit every day |
 | `InpMaxConsecutiveFailures` | 3 | legacy risk-control taxonomy |
 | `InpOrphanTimeoutMs` | **3,000** (was 30,000) | at max observed velocity 1.616 USD/sec, 30 s of unhedged exposure costs USD 48.48 — 4.85% of capital in one event. 3 s caps it near USD 4.85 |
 | `InpMinMarginLevelPct` | 300 | fail-safe; see §7 — **currently blocks every fire on this account** |
 | Expiry hard stop | refuse init within 14 days of 2026-11-25 | `GC-Z26.expiration_time` reads 0; nothing machine-readable will stop it (R-005) |
-| Account whitelist | explicit account number, compiled in | prevents running against the wrong account |
+| Account whitelist | explicit account number, **read from the same local, gitignored runtime config as connection credentials** *(corrected, condition C4)* | prevents running against the wrong account, without putting the account number in a committed source file. The original "compiled in" phrasing directly conflicted with §7's own credential-handling rule — a literal in `measurement_harness/`'s `.mq5` source would enter git history the moment that file is committed. See §8.1.1 |
 
 Every limit here is **fail-safe**: each one only ever stops activity, never permits it. That is the standard
 an uncalibrated limit must meet to be acceptable.
 
 **Kill switch is latching** — manual operator action to clear, following the legacy taxonomy's
 equity-drawdown-pause pattern rather than an auto-clearing one.
+
+**No per-order slippage cap exists, and none is possible under this account's execution mode (condition C3).**
+`PROJECT_MANDATE.md` → "INITIAL RISK LIMITS" requires a maximum-slippage limit. `GC-Z26` and `XAUUSD.vx` both
+report `trade_exemode = SYMBOL_TRADE_EXEMODE_MARKET` — market execution, which does not honour a deviation
+parameter at the order level at all; there is no MT5 mechanism to reject a fill for being too far from the
+requested price under this mode. The mitigation is entirely pre-trade and indirect: the spread circuit breaker
+(`InpMaxSpreadUsd`, D-H1) rejects *entry* when the visible spread is already wide, which correlates with but
+does not guarantee bounded slippage, and provides no protection on exit legs at all. This gap is accepted for
+a bounded, small-size measurement trial (worst case per pair is bounded by `InpMaxTradeLossUsd` regardless of
+its cause) but must not be carried forward silently into any future production execution engine design, where
+a genuine per-order risk control would be required.
 
 ## 7. Account preconditions — decided 2026-09-16, not yet satisfied
 
@@ -331,13 +364,19 @@ budgeted at n=300 and USD 149.25 guaranteed cost, capped by a latching USD 250 c
 - **Invalidation condition:** Stage 2 reveals that live fills cannot be attributed to reference prices
   reliably; or the Required Safety Margin methodology is revised such that this measurement is no longer its
   input; or the account owner withdraws the budget.
+- **Scope of any approval (condition C6, applied 2026-09-16):** any `/arb-risk-review` or `/arb-hostile-review`
+  verdict recorded against this document covers **D-008 as a bounded, quarantined measurement instrument
+  only** — see the quarantine policy in `measurement_harness/README.md`. It is not a review of, and sets no
+  precedent for, any future production execution engine. A reviewer citing this document's verdict later must
+  restate that scope explicitly, not assume it carries forward to `21_EXECUTION_ENGINE.md` or any other
+  design document once one exists.
 
 ## 12. Gate status
 
 Authorizes nothing. Requires, in order: Phase graduation criteria written (§2, done) → account precondition
 resolved (§7, decided, not yet satisfied) → `/arb-risk-review` re-run (done 2026-09-16, `APPROVE WITH
-CONDITIONS` C1–C6, not yet applied) → `/arb-hostile-review` re-run (not yet done) → D-008 accepted →
-`/arb-implement` Stage 0 only.
+CONDITIONS` C1–C6, **applied to this document 2026-09-16**) → `/arb-hostile-review` re-run (not yet done) →
+D-008 accepted → `/arb-implement` Stage 0 only.
 
 **Stage 0 is separately verified** (`measurement_harness/HarnessStage0_DryRun.mq5`, 12/12 PASS, confirmed
 2026-09-16 — see `34_DEMO_TEST_PLAN.md`). That satisfies "Stage 0 only" above. **Stage 2 specifically** is
