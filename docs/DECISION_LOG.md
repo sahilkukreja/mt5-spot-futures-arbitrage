@@ -214,3 +214,7 @@ No further decisions recorded yet.
   resolved by `docs/06_operations/PHASE_GRADUATION_CRITERIA.md` -- see that document and
   `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 2. The account precondition (section 7 of that
   document) remains open and is the account owner's decision.
+- **Evidence update (2026-09-16, later):** the account precondition is decided -- a separate, dedicated live
+  account (USD 1,000, no other positions), not the existing account's 4 open pairs. Opening and funding it is
+  a broker step for the account owner and is not yet done; see `04_testing/35_1000_USD_LIVE_TEST_PLAN.md`
+  section 7.

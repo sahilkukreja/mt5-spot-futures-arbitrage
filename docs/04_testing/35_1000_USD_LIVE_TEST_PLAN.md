@@ -159,22 +159,31 @@ an uncalibrated limit must meet to be acceptable.
 **Kill switch is latching** — manual operator action to clear, following the legacy taxonomy's
 equity-drawdown-pause pattern rather than an auto-clearing one.
 
-## 7. Account preconditions — blocking
+## 7. Account preconditions — decided 2026-09-16, not yet satisfied
 
-**The account currently holds 4 open pairs** (not this project's output): margin used USD 524.56, equity
-USD 1,000.61, free margin USD 476.05, **margin level 191%**.
+**The existing account currently holds 4 open pairs** (not this project's output): margin used USD 524.56,
+equity USD 1,000.61, free margin USD 476.05, **margin level 191%**. Adding one harness pair (USD 129.67) would
+take margin level to **153%** — below the `InpMinMarginLevelPct` guard of 300%, so the harness would reject
+every single fire on that account as currently loaded.
 
-Adding one harness pair (USD 129.67) takes margin level to **153%** — below the `InpMinMarginLevelPct` guard
-of 300%, so **the harness would reject every single fire on this account as currently loaded.**
+**Decision: a separate, dedicated live account, funded to USD 1,000, with no other positions.** This isolates
+the measurement's cost accounting from unrelated P&L, and removes any interaction between the harness's margin
+guard and positions it does not control. The existing account and its 4 pairs are untouched by this decision
+and continue independent of D-008.
 
-Before the trial can run, one of:
+**This is not yet satisfied — it requires the account owner to actually open and fund the account.** That is
+outside what this project's tooling or this session can do: it requires broker KYC/account-opening steps
+taken by the account owner directly with VPFX (or, if evaluated as an alternative, another broker — no
+alternative has been evaluated; see D-001's own "Risks" on single-broker comparison bias).
 
-1. Close the 4 existing positions. Note they are in the convergence direction and, per D-006, carry at
-   approximately −USD 0.38/day each if held overnight; and/or
-2. Run the trial on a separate, dedicated USD 1,000 account with no other positions.
-
-Option 2 is strongly preferred: it isolates the measurement from unrelated P&L, makes the cost accounting
-unambiguous, and removes any interaction between the harness's margin guard and positions it does not control.
+**Handling the new account's credentials once it exists:** the same safeguard this project already applies
+holds without exception — the account number and any login credentials are never printed to a committed file,
+never pasted into a doc, and never logged by the harness. Connection details belong in a local, gitignored
+config (the pattern `tools/` already uses), read by the harness at runtime, never hardcoded and never
+committed. When the account exists, the concrete next step is updating this section with the confirmed account
+mode (`ACCOUNT_TRADE_MODE_REAL` for this dedicated account, since the account itself is live even though the
+*first* stages of the staged protocol below still run against a demo account for mechanical validation) and
+funding confirmation — not the credentials themselves.
 
 ## 8. Staged protocol
 
