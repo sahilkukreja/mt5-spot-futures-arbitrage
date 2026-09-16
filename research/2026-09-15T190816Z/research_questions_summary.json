@@ -1,0 +1,45 @@
+{
+  "status": "collected_with_live_mt5",
+  "generated_at_utc": "2026-09-15T19:08:20.550434+00:00",
+  "lookback_days": 1,
+  "tick_days": null,
+  "symbols": [
+    "XAUUSD.vx",
+    "GC-Z26"
+  ],
+  "margin_required": {
+    "XAUUSD.vx": {
+      "symbol": "XAUUSD.vx",
+      "volume": 0.01,
+      "ask": 4304.93,
+      "bid": 4304.63,
+      "margin_required_buy": 43.05,
+      "margin_required_sell": 43.05
+    },
+    "GC-Z26": {
+      "symbol": "GC-Z26",
+      "volume": 0.01,
+      "ask": 4344.7,
+      "bid": 4344.4,
+      "margin_required_buy": 86.89,
+      "margin_required_sell": 86.89
+    }
+  },
+  "closed_pairs": 0,
+  "open_positions_censored": 0,
+  "Q_003": {
+    "status": "not_collected",
+    "note": "Use --ticks to collect synchronized quote history for Q-003."
+  },
+  "Q_004": {
+    "status": "insufficient_data",
+    "completed_pairs": 0,
+    "censored_observations": 0,
+    "duration_hours": {
+      "n": 0,
+      "status": "insufficient_data"
+    },
+    "note": "The pair reconciler returned no matched-pair rows in the selected window."
+  },
+  "research_gate": "Evidence only; no thresholds, trading decision, or live approval is produced."
+}

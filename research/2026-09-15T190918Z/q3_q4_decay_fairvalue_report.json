@@ -1,0 +1,260 @@
+{
+  "generated_at_utc": "2026-09-16T12:34:28.344471+00:00",
+  "inputs": {
+    "basis_csv": "research\\2026-09-15T190918Z\\basis_synchronized.csv",
+    "pairs_csv": "research\\2026-09-15T190918Z\\reconciled_pairs.csv",
+    "censored_csv": null,
+    "expiry_date": "2026-11-25",
+    "sofr_rate": 0.0364,
+    "sofr_rate_date": "2026-09-15"
+  },
+  "Q_003": {
+    "status": "measured_quote_skew_only",
+    "quote_skew_ms": {
+      "n": 707467,
+      "min": 0.0,
+      "p05": 8.0,
+      "p25": 52.0,
+      "median": 108.0,
+      "p75": 178.0,
+      "p95": 384.0,
+      "p99": 452.0,
+      "max": 500.0,
+      "mean": 130.5932,
+      "std": 106.0286
+    },
+    "stale_rates": {
+      "100": {
+        "rows_over_threshold": 376035,
+        "fraction_over_threshold": 0.531523
+      },
+      "200": {
+        "rows_over_threshold": 131684,
+        "fraction_over_threshold": 0.186134
+      },
+      "300": {
+        "rows_over_threshold": 61684,
+        "fraction_over_threshold": 0.08719
+      },
+      "400": {
+        "rows_over_threshold": 29081,
+        "fraction_over_threshold": 0.041106
+      },
+      "500": {
+        "rows_over_threshold": 0,
+        "fraction_over_threshold": 0.0
+      }
+    },
+    "candidate_limits": {
+      "quote_staleness_threshold_ms": {
+        "p95_candidate": 384.0,
+        "p99_candidate": 452.0,
+        "status": "research_candidate_only",
+        "reason": "Candidates describe this post-hoc merge sample; they are not approved live limits."
+      }
+    },
+    "orphan_leg_timeout": {
+      "status": "insufficient_data",
+      "reason": "Closed trade durations do not measure signal-to-fill or orphan-leg resolution latency."
+    },
+    "margin_stress_multiplier": {
+      "status": "insufficient_data",
+      "reason": "A margin multiplier requires account-equity and adverse-price stress scenarios."
+    }
+  },
+  "Q_004": {
+    "status": "provisional_closed_sample",
+    "completed_pairs": 7,
+    "censored_observations": 0,
+    "duration_hours": {
+      "n": 7,
+      "min": 3.08,
+      "p05": 4.823,
+      "p25": 10.01,
+      "median": 11.13,
+      "p75": 11.215,
+      "p95": 12.308,
+      "p99": 12.6536,
+      "max": 12.74,
+      "mean": 9.9143,
+      "std": 3.217
+    },
+    "basis_change": {
+      "n": 7,
+      "min": -1.39,
+      "p05": -1.183,
+      "p25": -0.64,
+      "median": -0.19,
+      "p75": 0.11,
+      "p95": 0.178,
+      "p99": 0.1876,
+      "max": 0.19,
+      "mean": -0.35,
+      "std": 0.5774
+    },
+    "net_pnl": {
+      "n": 7,
+      "min": -0.31,
+      "p05": -0.304,
+      "p25": -0.23,
+      "median": 0.09,
+      "p75": 0.48,
+      "p95": 1.065,
+      "p99": 1.245,
+      "max": 1.29,
+      "mean": 0.2243,
+      "std": 0.5769
+    },
+    "profitable_pairs": 4,
+    "loss_making_pairs": 3,
+    "censoring_note": "Completed rows are observed exits. Censored rows represent positions still open at the observation cutoff and must not be treated as convergence events. No survival-model estimate is claimed by this descriptive report.",
+    "conclusion": "Provisional only: this describes the supplied sample and does not establish the pair's expected holding period or multi-week convergence distribution."
+  },
+  "Q_004_decay_proxy": {
+    "status": "decay_proxy_only",
+    "halflife_by_resample_grid": {
+      "1min": {
+        "n": 6883,
+        "theta_per_step": 0.00618,
+        "halflife_minutes": 112.16,
+        "implied_local_mean": 41.4661
+      },
+      "5min": {
+        "n": 1381,
+        "theta_per_step": 0.008316,
+        "halflife_minutes": 416.78,
+        "implied_local_mean": 41.2358
+      },
+      "15min": {
+        "n": 461,
+        "theta_per_step": 0.015145,
+        "halflife_minutes": 686.5,
+        "implied_local_mean": 40.9495
+      },
+      "30min": {
+        "n": 231,
+        "theta_per_step": 0.026965,
+        "halflife_minutes": 771.17,
+        "implied_local_mean": 40.9507
+      },
+      "60min": {
+        "n": 116,
+        "theta_per_step": 0.046836,
+        "halflife_minutes": 887.97,
+        "implied_local_mean": 40.7546
+      },
+      "240min": {
+        "n": 32,
+        "theta_per_step": 0.111554,
+        "halflife_minutes": 1491.25,
+        "implied_local_mean": 40.3572
+      }
+    },
+    "autocorrelation_1min_series": {
+      "1min": 0.9938,
+      "5min": 0.9905,
+      "15min": 0.983,
+      "30min": 0.9734,
+      "60min": 0.9555,
+      "120min": 0.9172,
+      "240min": 0.8692,
+      "360min": 0.8203,
+      "480min": 0.7566,
+      "720min": 0.6516,
+      "1440min": 0.3641
+    },
+    "interpretation": "The AR(1) half-life shrinks at fine grids and grows at coarse grids while autocorrelation decays slowly over many hours \u2014 consistent with a fast, partially mean-reverting intraday component layered on a slower-moving level that does not fully revert within this single ~7-day window. This does not resolve Q-004: it describes statistical persistence of the raw series, not the duration of an actual threshold-triggered trade."
+  },
+  "R_004_anomaly": {
+    "status": "isolated",
+    "threshold": 10.0,
+    "rows_below_threshold": 1,
+    "context": [
+      {
+        "fut_time_msc": 1789133401369,
+        "fut_bid": 4393.18,
+        "fut_ask": 4396.43,
+        "spot_bid": 4352.04,
+        "spot_ask": 4352.39,
+        "convergence_basis": 40.78999999999997,
+        "quote_skew_ms": 52,
+        "fut_time_utc": "2026-09-11 13:30:01.369000+00:00"
+      },
+      {
+        "fut_time_msc": 1789133401581,
+        "fut_bid": 4360.33,
+        "fut_ask": 4360.78,
+        "spot_bid": 4322.16,
+        "spot_ask": 4334.31,
+        "convergence_basis": 26.019999999999527,
+        "quote_skew_ms": 52,
+        "fut_time_utc": "2026-09-11 13:30:01.581000+00:00"
+      },
+      {
+        "fut_time_msc": 1789133411218,
+        "fut_bid": 4339.38,
+        "fut_ask": 4342.43,
+        "spot_bid": 4322.16,
+        "spot_ask": 4334.31,
+        "convergence_basis": 5.069999999999709,
+        "quote_skew_ms": 238,
+        "fut_time_utc": "2026-09-11 13:30:11.218000+00:00"
+      },
+      {
+        "fut_time_msc": 1789133417439,
+        "fut_bid": 4337.83,
+        "fut_ask": 4338.28,
+        "spot_bid": 4296.43,
+        "spot_ask": 4301.02,
+        "convergence_basis": 36.80999999999949,
+        "quote_skew_ms": 5,
+        "fut_time_utc": "2026-09-11 13:30:17.439000+00:00"
+      },
+      {
+        "fut_time_msc": 1789133417540,
+        "fut_bid": 4338.98,
+        "fut_ask": 4339.43,
+        "spot_bid": 4296.43,
+        "spot_ask": 4301.02,
+        "convergence_basis": 37.95999999999913,
+        "quote_skew_ms": 106,
+        "fut_time_utc": "2026-09-11 13:30:17.540000+00:00"
+      }
+    ]
+  },
+  "research_gate": "Evidence report only; no production thresholds or trading decision are approved.",
+  "fair_value": {
+    "status": "measured",
+    "model": "mid_basis ~= spot_ask * implied_annual_rate * T_years (simple, uncompounded; T is small so compounding difference is negligible)",
+    "expiry_date": "2026-11-25",
+    "T_years_range": [
+      0.1923,
+      0.2115
+    ],
+    "implied_annual_rate": {
+      "n": 707467,
+      "min": 0.0143,
+      "p05": 0.0455,
+      "p25": 0.0468,
+      "median": 0.0474,
+      "p75": 0.0481,
+      "p95": 0.0487,
+      "p99": 0.0491,
+      "max": 0.0538,
+      "mean": 0.0474,
+      "std": 0.0009
+    },
+    "mean_spot_ask": 4344.8,
+    "mean_mid_basis": 41.6323,
+    "external_rate_comparison": {
+      "sofr_rate": 0.0364,
+      "sofr_source": "manually supplied; cite the sourced date/publication when recording this in docs",
+      "median_implied_rate": 0.0474,
+      "unexplained_rate_median_minus_sofr": 0.011,
+      "unexplained_basis_dollars_at_mean_spot_and_T": 9.6692,
+      "mean_actual_mid_basis": 41.6323,
+      "unexplained_fraction_of_mean_mid_basis": 0.2323,
+      "caveat": "This residual is a descriptive gap between the observed basis and a SOFR-only carry model. It is not itself an executable edge claim: GC-Z26 is a broker CFD (SYMBOL_CALC_MODE_CFD), not an exchange-cleared future, so part of the residual may be ordinary dealer/liquidity markup in the synthetic quote construction rather than a genuine mispricing. Must still clear all 14_TRANSACTION_COST_MODEL.md costs and a safety margin before being considered tradeable."
+    }
+  }
+}

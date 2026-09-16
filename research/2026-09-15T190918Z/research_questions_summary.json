@@ -1,0 +1,133 @@
+{
+  "status": "collected_with_live_mt5",
+  "generated_at_utc": "2026-09-15T19:09:47.641006+00:00",
+  "lookback_days": 30,
+  "tick_days": 7,
+  "symbols": [
+    "XAUUSD.vx",
+    "GC-Z26"
+  ],
+  "margin_required": {
+    "XAUUSD.vx": {
+      "symbol": "XAUUSD.vx",
+      "volume": 0.01,
+      "ask": 4305.06,
+      "bid": 4304.76,
+      "margin_required_buy": 43.05,
+      "margin_required_sell": 43.05
+    },
+    "GC-Z26": {
+      "symbol": "GC-Z26",
+      "volume": 0.01,
+      "ask": 4344.75,
+      "bid": 4344.45,
+      "margin_required_buy": 86.9,
+      "margin_required_sell": 86.89
+    }
+  },
+  "closed_pairs": 7,
+  "open_positions_censored": 0,
+  "Q_003": {
+    "status": "measured_quote_skew_only",
+    "quote_skew_ms": {
+      "n": 707467,
+      "min": 0.0,
+      "p05": 8.0,
+      "p25": 52.0,
+      "median": 108.0,
+      "p75": 178.0,
+      "p95": 384.0,
+      "p99": 452.0,
+      "max": 500.0,
+      "mean": 130.5932,
+      "std": 106.0286
+    },
+    "stale_rates": {
+      "100": {
+        "rows_over_threshold": 376035,
+        "fraction_over_threshold": 0.531523
+      },
+      "200": {
+        "rows_over_threshold": 131684,
+        "fraction_over_threshold": 0.186134
+      },
+      "300": {
+        "rows_over_threshold": 61684,
+        "fraction_over_threshold": 0.08719
+      },
+      "400": {
+        "rows_over_threshold": 29081,
+        "fraction_over_threshold": 0.041106
+      },
+      "500": {
+        "rows_over_threshold": 0,
+        "fraction_over_threshold": 0.0
+      }
+    },
+    "candidate_limits": {
+      "quote_staleness_threshold_ms": {
+        "p95_candidate": 384.0,
+        "p99_candidate": 452.0,
+        "status": "research_candidate_only",
+        "reason": "Candidates describe this post-hoc merge sample; they are not approved live limits."
+      }
+    },
+    "orphan_leg_timeout": {
+      "status": "insufficient_data",
+      "reason": "Closed trade durations do not measure signal-to-fill or orphan-leg resolution latency."
+    },
+    "margin_stress_multiplier": {
+      "status": "insufficient_data",
+      "reason": "A margin multiplier requires account-equity and adverse-price stress scenarios."
+    }
+  },
+  "Q_004": {
+    "status": "provisional_closed_sample",
+    "completed_pairs": 7,
+    "censored_observations": 0,
+    "duration_hours": {
+      "n": 7,
+      "min": 3.08,
+      "p05": 4.823,
+      "p25": 10.01,
+      "median": 11.13,
+      "p75": 11.215,
+      "p95": 12.308,
+      "p99": 12.6536,
+      "max": 12.74,
+      "mean": 9.9143,
+      "std": 3.217
+    },
+    "basis_change": {
+      "n": 7,
+      "min": -1.39,
+      "p05": -1.183,
+      "p25": -0.64,
+      "median": -0.19,
+      "p75": 0.11,
+      "p95": 0.178,
+      "p99": 0.1876,
+      "max": 0.19,
+      "mean": -0.35,
+      "std": 0.5774
+    },
+    "net_pnl": {
+      "n": 7,
+      "min": -0.31,
+      "p05": -0.304,
+      "p25": -0.23,
+      "median": 0.09,
+      "p75": 0.48,
+      "p95": 1.065,
+      "p99": 1.245,
+      "max": 1.29,
+      "mean": 0.2243,
+      "std": 0.5769
+    },
+    "profitable_pairs": 4,
+    "loss_making_pairs": 3,
+    "censoring_note": "Completed rows are observed exits. Censored rows represent positions still open at the observation cutoff and must not be treated as convergence events. No survival-model estimate is claimed by this descriptive report.",
+    "conclusion": "Provisional only: this describes the supplied sample and does not establish the pair's expected holding period or multi-week convergence distribution."
+  },
+  "research_gate": "Evidence only; no thresholds, trading decision, or live approval is produced."
+}

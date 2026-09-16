@@ -12,6 +12,7 @@ constraints, and safety invariants — it takes precedence over anything below.
 ```text
 docs/                     Source of truth. All research, quant models, design, testing, and ops docs.
   PROJECT_MANDATE.md       Governing mandate — read this first.
+  ROADMAP.md               Gate status and the ordered path from research close-out to implementation.
   DECISION_LOG.md          Accepted/rejected decisions.
   ASSUMPTIONS.md           Tracked assumptions and their validation status.
   OPEN_QUESTIONS.md        Unresolved questions blocking decisions.
@@ -22,6 +23,8 @@ docs/                     Source of truth. All research, quant models, design, t
   04_testing/              Simulation, tick replay, fault injection, demo/live test plans.
   05_development/          MQL5 architecture, coding standards, test plans.
   06_operations/           VPS, monitoring, alerting, kill switch, runbooks.
+  sessions/                Dated working records of long research sessions — method corrections, pitfalls,
+                            and carried-forward items. Not source of truth; see its README.
 
 .claude/skills/            Claude Code skills that route and gate work by phase (see below).
 
@@ -35,8 +38,12 @@ legacy/                    Raw, UNREVIEWED dump of the prior EA project. Gitigno
 src/                       Empty. No implementation until the design gate in docs/03_system_design/ passes.
 tools/                     Read-only research/data-collection scripts (e.g. MT5 terminal queries). Not the
                             trading system — never places, modifies, or closes an order. See tools/README.md.
-research/                  Output of tools/ scripts and other local data/notebooks. Gitignored — not source
-                            of truth; promote findings into docs/ by hand after review.
+research/                  Output of tools/ scripts and other local data/notebooks. Version-controlled (see
+                            below) so work can move between machines — but still NOT source of truth; promote
+                            findings into docs/ by hand after review.
+                            Large tick/basis CSVs are stored via Git LFS (see .gitattributes). Run
+                            `git lfs install` once on each machine before cloning or pulling, or the big
+                            files arrive as pointer stubs instead of data.
 ```
 
 ## How to work on this project (Claude Code)

@@ -1,0 +1,42 @@
+{
+  "purpose": "Reference provenance for collection APIs and read-only calculations.",
+  "broker_facts": "Must come from the live MT5 terminal or VPFX documentation/support.",
+  "references": [
+    {
+      "url": "https://www.mql5.com/en/docs/python_metatrader5",
+      "status": "fetched",
+      "http_status": 200,
+      "title": "Python Integration - MQL5 Reference",
+      "bytes": 84611,
+      "sha256": "9cdf91f6b5d46e1dcc9c2dc47e4e8e910b3aa89cc77ba85af41113cec57aa1a2",
+      "note": "Official API reference provenance only; not broker-specific evidence."
+    },
+    {
+      "url": "https://www.mql5.com/en/docs/python_metatrader5/mt5copyticksrange_py",
+      "status": "fetched",
+      "http_status": 200,
+      "title": "copy_ticks_range - Python Integration - MQL5 Reference",
+      "bytes": 61260,
+      "sha256": "87e41429c2632fe30fbefc514a24e28e72b1e04fd40b0383588848c5e0c4b36e",
+      "note": "Official API reference provenance only; not broker-specific evidence."
+    },
+    {
+      "url": "https://www.mql5.com/en/docs/python_metatrader5/mt5historydealsget_py",
+      "status": "fetched",
+      "http_status": 200,
+      "title": "history_deals_get - Python Integration - MQL5 Reference",
+      "bytes": 72536,
+      "sha256": "4f6a64f5c6b9f086cad6743879985cab7ff3872691da0558e929dea9c3bb4d27",
+      "note": "Official API reference provenance only; not broker-specific evidence."
+    },
+    {
+      "url": "https://www.mql5.com/en/docs/python_metatrader5/mt5ordercalcmargin_py",
+      "status": "fetched",
+      "http_status": 200,
+      "title": "order_calc_margin - Python Integration - MQL5 Reference",
+      "bytes": 57140,
+      "sha256": "e2415b884e89e288a9b5961aff46aa1684edf917d84116bf1972ef92f00e2fc6",
+      "note": "Official API reference provenance only; not broker-specific evidence."
+    }
+  ]
+}

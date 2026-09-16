@@ -1,0 +1,5 @@
+{
+  "status": "blocked_by_environment_or_history",
+  "error": "historical bid/ask ticks failed after 3 attempt(s): 'charmap' codec can't encode character '\\u2192' in position 71: character maps to <undefined>",
+  "research_gate": "No conclusion is produced when collection is incomplete."
+}

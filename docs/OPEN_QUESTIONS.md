@@ -72,6 +72,19 @@ stress multiplier?
   underlying Q-003 measurement.
 
 ### Q-004: What is the empirical time-to-convergence / expected holding period for the `GC-Z26`/`XAUUSD.vx` gap?
+- **ANSWERED 2026-09-16 for the overnight structure — the question was partly mis-framed.** The basis does not
+  mean-revert toward a level; it **decays deterministically** at **−$0.3905/day** (95% CI −$0.4480 … −$0.3330,
+  R²=0.83, 5,843,313 synchronized rows from the full terminal tick exports) as the contract approaches expiry,
+  matching `12_FAIR_VALUE_MODEL.md`'s carry prediction of −$0.4832/day. Against one-sided spot swap of
+  −$0.7714/day, net carry is **−$0.3809/day with a 95% CI entirely below zero**: there is no overnight holding
+  period at which the convergence trade is profitable. This also explains why the AR(1) half-life estimates
+  kept inflating — they were fitting the drift, since there is no fixed mean to revert to. See
+  `17_EXPECTED_VALUE.md` → "Correction 2026-09-16" and `13_BASIS_MODEL.md` → "Resolved 2026-09-16".
+  **Still open, and now the only live form of this question:** the holding-period distribution for *intraday*
+  trades, which pay no swap. That is a signal-design question for the unwritten `15_SIGNAL_RESEARCH.md`, not a
+  basis-statistics question. The original status text is retained below as a record.
+
+
 - **Raised:** 2026-09-15
 - **Blocks:** `02_quant/14_TRANSACTION_COST_MODEL.md` (cannot convert its swap-cost sensitivity table into a
   real expected cost without this), `13_BASIS_MODEL.md`, `17_EXPECTED_VALUE.md`, and any signal design bounding
@@ -105,7 +118,13 @@ stress multiplier?
 2. What exact price relationship should we trade? — working answer: `Bid(GC-Z26) − Ask(XAUUSD.vx)` for the
    convergence (sell futures/buy spot) trade — see `02_quant/11_SPREAD_DEFINITION.md`. Not yet validated
    against a real distribution.
-3. What expected edge remains after all costs? — still open. `17_EXPECTED_VALUE.md` (new, 2026-09-16) assembles
+3. What expected edge remains after all costs? — **answered for the hold-to-convergence structure, 2026-09-16:
+   negative.** Net carry −$0.3809/day (95% CI −$0.4384 … −$0.3234) once the basis decay rate (−$0.3905/day) is
+   measured against one-sided spot swap (−$0.7714/day). Expected P&L is negative at every holding period
+   including same-day, once the $0.4975 round trip is added. Still open for an *intraday* structure, which
+   pays no swap: measured daily range of `convergence_basis` is median $7.91 against that $0.4975 round trip,
+   but no signal exists to capture it and slippage is still unmeasured. See `17_EXPECTED_VALUE.md` →
+   "Correction 2026-09-16". Earlier text retained below for the record. `17_EXPECTED_VALUE.md` assembles
    the mandate's full `TRUE NET EDGE` component list: known costs (spread, commission, swap) are now fully
    sourced and small relative to the raw spread for near-term holding periods, but entry/exit slippage, latency
    uncertainty, and the execution-risk buffer remain **unmeasured** (no live execution trial exists yet), and
@@ -131,7 +150,11 @@ stress multiplier?
    method was tested at this wider scale and found unreliable, a real setback, not just more evidence needed)
    and Q-002 (rollover/price-source/position-restriction).
 7. What execution latency is acceptable? — open, not yet studied.
-8. What conditions make the strategy economically unviable? — open, blocked on the cost/EV model. Partial,
-   sourced answer: a holding period longer than roughly 3–4 weeks under the current swap regime, on its own,
-   is enough to erase the observed gap (see `14_TRANSACTION_COST_MODEL.md`) — so "convergence takes too long"
-   is now a concretely quantified failure mode, not just a generic concern.
+8. What conditions make the strategy economically unviable? — **substantially answered 2026-09-16.** The
+   condition is far more aggressive than previously thought: **any overnight hold at all**, not "longer than
+   3–4 weeks". The spot leg's one-sided swap (−$0.7714/day averaged for the Wednesday triple charge) exceeds
+   the basis decay the position earns (−$0.3905/day), so the trade bleeds −$0.3809/day from the first night.
+   The earlier "3–4 weeks" figure came from comparing swap against the basis *level* rather than against the
+   basis *change*, which overstated the revenue side — see `17_EXPECTED_VALUE.md` → "Correction 2026-09-16".
+   Second unviability condition, unchanged and still open: entry/exit slippage large enough to consume the
+   intraday move, which cannot be assessed without a demo execution trial.

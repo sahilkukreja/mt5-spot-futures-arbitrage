@@ -47,8 +47,8 @@ relevant to `12_FAIR_VALUE_MODEL.md`, still NOT STARTED.
 
 | Component | Value | Status |
 |---|---|---|
-| Spot spread cost (round trip) | 0.30 → **$0.30** at 0.01 lot | Sourced (live spread field, not yet a distribution) |
-| Futures spread cost (round trip) | 0.30 → **$0.30** at 0.01 lot | Sourced (same caveat) |
+| Spot spread cost (round trip) | ~~$0.30~~ → **$0.1545** mean at 0.01 lot | **Sourced as a full distribution 2026-09-16** — see "Spread, measured properly" below |
+| Futures spread cost (round trip) | ~~$0.30~~ → **$0.2430** mean at 0.01 lot | **Sourced as a full distribution 2026-09-16** — same |
 | Futures commission (round trip, total) | $10 × 0.01 = **$0.10** | Sourced, confirmed fixed 2026-09-15 (see below) |
 | Spot commission | **$0.00** | Sourced 2026-09-15 — **Q-002 partially resolved** |
 | Swap — spot leg (long, held) | −60 pts/day = **−$0.60/day**; ×3 on the Wednesday rollover = **−$1.80** that day | Sourced |
@@ -60,15 +60,43 @@ relevant to `12_FAIR_VALUE_MODEL.md`, still NOT STARTED.
 | FX conversion | **$0.00** — both legs quote/settle in USD | Resolved |
 | Execution-risk buffer | Not set — mandate requires this be tied to measured execution data, not chosen arbitrarily | Blocked |
 
+## Spread, measured properly (2026-09-16) — supersedes the two snapshot values
+
+The $0.30/leg figures above came from single live readings of the `spread` field. The full terminal tick
+exports now give the actual distribution, per leg, across every quoted tick in a 45-day window. Source:
+`research/export-full/basis_summary.json` via `tools/tick_export_loader.py`.
+
+| Leg | n ticks | mean | median | p95 | p99 | p99.9 | max |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `XAUUSD.vx` (spot) | 8,798,113 | **0.1545** | 0.15 | 0.15 | 0.15 | 2.13 | **12.15** |
+| `GC-Z26` (futures) | 6,520,722 | **0.2430** | 0.24 | 0.25 | 0.25 | 0.44 | **5.04** |
+
+Two findings, pulling in opposite directions:
+
+1. **Typical spread is roughly half what was assumed.** Combined round-trip spread is **$0.3975**, not $0.60.
+   Both legs quote at a near-constant floor — spot's p99 equals its median exactly, and the futures p99 is one
+   cent above its median. For ordinary conditions this is close to a *fixed* cost, not a variable one.
+2. **The tail is far worse than assumed, and was completely invisible in the snapshots.** Spot spread reaches
+   $12.15 — 81× its median, and 40× the $0.30 that was being used as a worst case. Futures reaches $5.04.
+
+Because the distribution is near-degenerate until it isn't, a spread gate is unusually cheap and unusually
+effective here: rejecting entry when either leg's spread exceeds, say, 2× its median would reject well under
+1% of ticks while eliminating the entire tail. **No such threshold is proposed as a value** — it belongs in
+`15_SIGNAL_RESEARCH.md` / `24_RISK_ENGINE.md` and needs its own derivation. The point for this document is
+that the cost is now a measured distribution rather than a point estimate, and its shape matters.
+
 ## Calculation: cost floor vs. holding period
 
 **Same-day round trip, known costs only** (spread + futures commission + spot commission, now fully sourced
-at $0; still excludes slippage, rollover, and execution-risk buffer):
+at $0; still excludes slippage, rollover, and execution-risk buffer), using the **measured** spreads:
 
 ```
-$0.30 (spot spread) + $0.30 (futures spread) + $0.10 (futures commission) = $0.70
-≈ 1.7% of the current 40.07 gap
+$0.1545 (spot spread) + $0.2430 (futures spread) + $0.10 (futures commission) = $0.4975
 ```
+
+(The superseded figure was $0.70, using $0.30/leg. The tables immediately below still use the old $0.70 floor;
+they are left as-is because the swap term dominates them entirely and the $0.20 difference does not change
+any conclusion they draw. The corrected floor is used in `17_EXPECTED_VALUE.md`.)
 
 This alone looks favorable. It is not the real picture, because of the swap asymmetry above: **only the spot
 leg pays daily swap; the futures leg pays none.** Every day the position is held costs the trade ~$0.60
@@ -90,6 +118,16 @@ observed gap — before spot commission, slippage, or any execution-risk buffer 
 mean the trade is unviable; it means **time to convergence is the dominant unresolved variable**, not spread
 or commission (which are individually small). A trade held only a few days faces a very different cost
 picture than one held for weeks.
+
+> **Update 2026-09-16 — the caveat in that paragraph is now resolved, against the trade.** "This does not mean
+> the trade is unviable" was the right call on the evidence available then, because the *revenue* side had
+> never been measured: the tables above compare cost against the basis **level**, but the trade only earns the
+> basis **change**. That change is now measured at **−$0.3905/day** (95% CI −$0.4480 … −$0.3330, R²=0.83) from
+> 5.8M synchronized rows over 45 days. Against −$0.7714/day of one-sided spot swap, net carry is
+> **−$0.3809/day** and the confidence interval does not touch zero. Time to convergence is therefore no longer
+> "the dominant unresolved variable" for this structure — it is resolved, and the answer is that no overnight
+> holding period works. Full derivation in `17_EXPECTED_VALUE.md` → "Correction 2026-09-16". Intraday holds,
+> which pay no swap at all, are not covered by this finding and remain open.
 
 ## Real paired-trade evidence (2026-09-15) — automated reconciliation, n=7
 

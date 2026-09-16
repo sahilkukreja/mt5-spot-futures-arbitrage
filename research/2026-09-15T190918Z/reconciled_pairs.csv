@@ -1,0 +1,8 @@
+spot_position_id,fut_position_id,direction,volume,open_time_skew_seconds,entry_basis,exit_basis,basis_change,duration_hours,spot_profit,fut_profit,spot_commission,fut_commission,net_pnl
+34226816,34226815,CONVERGENCE (buy spot/sell fut),0.01,0.0,42.05,41.47,-0.58,3.08,-13.02,13.6,0.0,-0.16,0.42
+34227092,34227091,CONVERGENCE (buy spot/sell fut),0.01,0.0,40.16,40.31,0.15,12.74,-42.1,41.95,0.0,-0.16,-0.31
+34227214,34227213,CONVERGENCE (buy spot/sell fut),0.01,0.0,41.01,40.31,-0.7,11.13,-50.25,50.95,0.0,-0.16,0.54
+34229071,34229070,CONVERGENCE (buy spot/sell fut),0.01,0.0,39.79,39.86,0.07,11.3,27.23,-27.3,0.0,-0.1,-0.17
+34229105,34229104,CONVERGENCE (buy spot/sell fut),0.01,0.0,41.32,39.93,-1.39,11.13,30.39,-29.0,0.0,-0.1,1.29
+34229107,34229106,CONVERGENCE (buy spot/sell fut),0.01,0.0,39.77,39.96,0.19,11.13,28.91,-29.1,0.0,-0.1,-0.29
+34229430,34229429,CONVERGENCE (buy spot/sell fut),0.01,1.0,40.15,39.96,-0.19,8.89,-15.91,16.1,0.0,-0.1,0.09

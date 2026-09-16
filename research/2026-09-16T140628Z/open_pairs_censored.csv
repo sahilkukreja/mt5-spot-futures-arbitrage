@@ -1,0 +1,5 @@
+pair_id,spot_position_id,fut_position_id,direction,volume,open_time_skew_seconds,entry_basis,duration_hours_at_snapshot,status
+34232434_34232433,34232434,34232433,CONVERGENCE (buy spot/sell fut),0.01,1.0,40.78,0.6115,open
+34232482_34232481,34232482,34232481,CONVERGENCE (buy spot/sell fut),0.01,0.0,40.97,-0.1082,open
+34232581_34232580,34232581,34232580,CONVERGENCE (buy spot/sell fut),0.01,0.0,42.26,-0.6454,open
+34232583_34232582,34232583,34232582,CONVERGENCE (buy spot/sell fut),0.01,0.0,43.06,-0.6485,open

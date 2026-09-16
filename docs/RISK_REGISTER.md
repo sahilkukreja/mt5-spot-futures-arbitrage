@@ -46,6 +46,22 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   change) disagrees materially.
 
 ### R-002: Thin edge consumed by unmodelled costs
+- **REALIZED 2026-09-16 — this risk is no longer hypothetical for the overnight structure; it materialized.**
+  The missing piece was never a cost, it was the *revenue*: nothing in this project had measured how fast the
+  basis actually decays, so every prior comparison put costs next to the basis **level** rather than its
+  **change**. Measured: decay **-$0.3905/day** (95% CI -$0.4480 ... -$0.3330, R^2=0.83, n=5,843,313
+  synchronized rows over 45 days) against one-sided spot swap of **-$0.7714/day**. Net carry
+  **-$0.3809/day, 95% CI entirely below zero**, before the $0.4975 round trip. The thin edge is not merely at
+  risk of being consumed by costs -- for any overnight hold it is already negative. See D-006 (proposed) and
+  `02_quant/17_EXPECTED_VALUE.md` -> "Correction 2026-09-16".
+  Two things this does **not** say: (1) intraday pairs pay no swap and are not covered -- measured daily range
+  of `convergence_basis` is median $7.91 against a $0.4975 round trip, which is opportunity, not demonstrated
+  edge; (2) it does not reduce the unmeasured-slippage exposure that is the other half of this risk.
+  **Practical note on the live account:** the 4 concurrent pairs observed open on 2026-09-16 are in the
+  convergence direction. To the extent any of them are held overnight, this measurement says they carry at
+  approximately -$0.38/day each (~-$1.52/day combined) in net carry, independent of where the basis happens to
+  move. Those positions are not this project's output and this document does not direct action on them -- it
+  records the measurement so the account owner can act on it.
 - **Cause:** expected convergence is small relative to spread, commission, slippage, swap, rollover, and
   estimation error. **Corrected 2026-09-15**: on this account, `XAUUSD.vx` charges **-60 points/day** on the
   long side while `GC-Z26` has `swap_mode = 0`, so the cumulative cost is one-sided. At the captured contract

@@ -123,3 +123,31 @@ No further decisions recorded yet.
   gate has passed. It explicitly has not — see the document's own "Gate status" section.
 - **Invalidation condition:** if D-001 (broker/instrument pair) changes, or if the layer boundaries prove to
   need economics-dependent structure (not just parameters) once the cost model exists.
+
+### D-006: Reject the hold-to-convergence structure (overnight long-spot / short-futures)
+- **Status:** proposed (routes through `/arb-risk-review` and `/arb-hostile-review` before acceptance)
+- **Date:** 2026-09-16
+- **Decision:** Reject any strategy structure whose return depends on holding a long `XAUUSD.vx` /
+  short `GC-Z26` pair overnight to capture basis convergence. This rejects a *structure*, not the project:
+  intraday relative-value work on the same pair is explicitly not covered by this decision.
+- **Alternatives considered:** (a) keep the structure open pending a shorter target holding period —
+  rejected, because the finding is a per-day rate, so no overnight holding period escapes it; (b) pursue the
+  mirror trade (short spot / long futures), which nets +$0.1238/day on the same measurements — **not
+  recommended**, see `17_EXPECTED_VALUE.md` → "The reverse direction". Its entire return is a broker-set swap
+  credit that can change without notice, and +$0.1238/day is small against a $2.77 residual std and ~$8 daily
+  ranges, which is exactly the "edge small relative to uncertainty" the mandate requires be rejected.
+- **Reason:** the trade's revenue term was never measured. The basis decays at **−$0.3905/day**
+  (95% CI −$0.4480 … −$0.3330, R²=0.83, n=5,843,313 synchronized rows over 45 days), matching the carry
+  model's independent prediction of −$0.4832/day. One-sided spot swap costs **−$0.7714/day**
+  (−60 pts/day, ×3 Wednesdays). Net carry **−$0.3809/day, 95% CI entirely below zero**, before the $0.4975
+  round trip. The prior analysis compared cost against the basis *level* instead of its *change* and so
+  reported a positive residual where the true expected value is negative.
+- **Evidence:** [`docs/02_quant/17_EXPECTED_VALUE.md`](02_quant/17_EXPECTED_VALUE.md) → "Correction
+  2026-09-16"; [`docs/02_quant/13_BASIS_MODEL.md`](02_quant/13_BASIS_MODEL.md) → "Resolved 2026-09-16";
+  `research/export-full/basis_summary.json` via `tools/tick_export_loader.py`.
+- **Risks:** the decay rate is measured over a single 45-day window on a single contract approaching a single
+  expiry, and swap rates are broker-set and can change. A different swap regime, or a contract at a different
+  point in its life, could change the arithmetic — but would not change the method.
+- **Invalidation condition:** a sustained spot swap rate whose cost falls below the measured basis decay
+  (roughly, spot `swap_long` better than −39 points/day at current spot prices and time to expiry), or
+  evidence that the decay rate is materially higher than measured over a longer or different window.

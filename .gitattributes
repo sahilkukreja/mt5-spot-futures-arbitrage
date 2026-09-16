@@ -1,0 +1,4 @@
+research/GC-Z26_*.csv filter=lfs diff=lfs merge=lfs -text
+research/XAUUSD.vx_*.csv filter=lfs diff=lfs merge=lfs -text
+research/**/ticks_*.csv filter=lfs diff=lfs merge=lfs -text
+research/**/basis_synchronized.csv filter=lfs diff=lfs merge=lfs -text

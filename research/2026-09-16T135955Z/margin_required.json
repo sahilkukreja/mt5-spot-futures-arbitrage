@@ -1,0 +1,18 @@
+{
+  "XAUUSD.vx": {
+    "symbol": "XAUUSD.vx",
+    "volume": 0.01,
+    "ask": 4338.56,
+    "bid": 4338.26,
+    "margin_required_buy": 43.39,
+    "margin_required_sell": 43.38
+  },
+  "GC-Z26": {
+    "symbol": "GC-Z26",
+    "volume": 0.01,
+    "ask": 4379.88,
+    "bid": 4379.63,
+    "margin_required_buy": 87.6,
+    "margin_required_sell": 87.59
+  }
+}

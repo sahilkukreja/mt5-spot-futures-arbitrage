@@ -1,0 +1,26 @@
+{
+  "purpose": "Reference provenance for collection APIs and read-only calculations.",
+  "broker_facts": "Must come from the live MT5 terminal or VPFX documentation/support.",
+  "references": [
+    {
+      "url": "https://www.mql5.com/en/docs/python_metatrader5",
+      "status": "not_fetched",
+      "note": "Reference URL recorded for review; no broker fact is inferred from it."
+    },
+    {
+      "url": "https://www.mql5.com/en/docs/python_metatrader5/mt5copyticksrange_py",
+      "status": "not_fetched",
+      "note": "Reference URL recorded for review; no broker fact is inferred from it."
+    },
+    {
+      "url": "https://www.mql5.com/en/docs/python_metatrader5/mt5historydealsget_py",
+      "status": "not_fetched",
+      "note": "Reference URL recorded for review; no broker fact is inferred from it."
+    },
+    {
+      "url": "https://www.mql5.com/en/docs/python_metatrader5/mt5ordercalcmargin_py",
+      "status": "not_fetched",
+      "note": "Reference URL recorded for review; no broker fact is inferred from it."
+    }
+  ]
+}

@@ -23,7 +23,6 @@ ReportHistory-*.xlsx
 *.zip
 
 # Research data and notebooks output (large/binary; not source of truth)
-/research/*
 !/research/.gitkeep
 
 # Source-agnostic scratch

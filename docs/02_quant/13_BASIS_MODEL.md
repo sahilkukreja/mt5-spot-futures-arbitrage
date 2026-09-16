@@ -166,6 +166,43 @@ window lengths) instead of the raw dollar `convergence_basis`, or explicitly de-
 subtract a rolling mean) before fitting AR(1). Until one of those is done, this decay proxy should be treated
 as **not usable evidence for Q-004** — a correction from its prior "additional, distinct evidence" framing.
 
+### Resolved 2026-09-16 — the trend the AR(1) fit kept hitting is now measured, and it is deterministic
+
+The diagnosis above ("the series is not stationary, it rides a trend") was correct but incomplete: it treated
+the trend as contamination to be removed. Measuring the trend directly shows it is not noise at all — **it is
+the signal, and it has the wrong sign for the trade.**
+
+Source: `research/export-full/basis_summary.json` (`tools/tick_export_loader.py`, full terminal tick exports,
+6,520,722 futures + 8,798,113 spot ticks, 2026-07-27 → 2026-09-16, 5,843,313 synchronized rows at 500 ms).
+OLS of daily mean `convergence_basis` on calendar day across the 38 full sessions (thin Sunday sessions with
+<20,000 ticks excluded):
+
+| Quantity | Value |
+|---|---|
+| Slope | **−$0.3905/day** (1 s.e. $0.0293; 95% CI −$0.4480 … −$0.3330) |
+| R² | 0.8312 |
+| Residual std about the trend | $2.77 |
+| Fitted start → end | $62.43 → $42.52 over 51 days |
+
+`12_FAIR_VALUE_MODEL.md`'s carry model independently predicts −$0.4832/day over the same window (4.71% implied
+rate, `T` falling 0.3313 → 0.1916 years). Same sign, same magnitude. **The basis is not mean-reverting around
+a level; it is decaying monotonically toward zero as the contract approaches expiry, because it is carry
+unwinding.**
+
+That resolves the AR(1) puzzle completely. A level-based AR(1) fit on a series with a strong deterministic
+drift will always report a long and window-dependent "half-life", because there is no fixed mean to revert to
+— the mean itself is moving at $0.39/day. The half-lives were not measuring a slow mean-reversion; they were
+measuring the drift. Widening the window made the drift dominate more, which is exactly why every estimate
+inflated. **The de-trended re-run proposed above is still worth doing** to characterise the *residual* around
+the drift (std $2.77, and the intraday behaviour that matters for a signal), but it will not rescue the
+original interpretation, and Q-004 should no longer be framed as "how long until the basis reverts".
+
+**Why this matters more than the method fix:** at −$0.3905/day of decay captured against −$0.7714/day of
+one-sided spot swap paid, the hold-to-convergence trade is negative-carry at every holding period, with a 95%
+confidence interval that does not touch zero. The full derivation and its consequences are in
+`17_EXPECTED_VALUE.md` → "Correction 2026-09-16". Q-004's original question — *how long to hold* — has a
+measured answer for this structure: **not overnight**, because the decay never outruns the swap.
+
 **What this does not show, unchanged:** even a correctly-detrended version of this proxy would still be a
 statistical persistence measure of the raw tick series, not the duration of an actual entry/exit-threshold-conditioned
 trade. It would remain additional evidence alongside the n=7/n=8 realized-pair sample, not a replacement for
