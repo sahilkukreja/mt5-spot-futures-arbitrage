@@ -239,6 +239,13 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
 - **Status:** open
 
 ### R-007: Demo execution may not model slippage, producing a falsely safe Required Safety Margin
+- **Update 2026-09-16 — largely resolved by D-008, which moves the trial to a live account.** Live fills
+  remove the mechanism entirely: there is no demo fill engine to be unrepresentative. This risk remains
+  recorded because (a) the demo Stage 1 mechanical shakedown still runs, and its slippage/rejection outputs
+  must be **discarded, not reported**, which is exactly the trap this entry describes; and (b) if the live
+  budget is withdrawn and the project falls back to demo, this risk returns in full and validity check V1 is
+  known to be too weak to catch its more dangerous form (a demo that synthesises plausible-looking slippage
+  uncorrelated with market conditions). Superseded in practice, retained as a live trap for the fallback path.
 - **Raised:** 2026-09-16
 - **Cause:** many broker demo servers fill orders at the requested price with no adverse deviation. If VPFX's
   demo behaves that way, the D-007 measurement harness would record `slippage ~ 0` across every pair.
@@ -258,6 +265,33 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
 - **Status:** open — cannot be assessed until the harness reaches Stage 2. If it fires, B1 stays open and the
   only remaining route to slippage is a bounded live micro-trial, which is a separate decision and is
   explicitly not proposed.
+
+### R-008: Real capital spent on a measurement that cannot clear the mandate's gate
+- **Raised:** 2026-09-16
+- **Cause:** D-008 funds a live trial at n=300, costing **USD 149.25 guaranteed (14.93% of the USD 1,000
+  ceiling)** before slippage, and up to USD 449 (44.9%) if slippage runs at USD 1.00/pair. The trial's stated
+  purpose is to supply `17_EXPECTED_VALUE.md`'s Required Safety Margin, defined as
+  `k x p95(round-trip slippage)`. The p95 that matters is of the **conditional** distribution -- slippage at
+  the moments a signal would fire, which are disproportionately fast, wide-spread moments. Elevated-spread
+  conditions occur in 0.113% of spot ticks; collecting 30 such observations needs **n ~ 26,500, costing about
+  USD 13,208 -- 13.2x the entire capital ceiling.**
+- **Consequence:** the Required Safety Margin **cannot be derived as currently specified at any affordable
+  sample size.** Money is therefore being spent on a measurement that can refute the strategy but can never
+  clear it. The specific failure mode to guard against is substituting the *unconditional* p95 for the
+  conditional one: that number is cheap, looks rigorous, and is biased low -- it would understate the margin
+  precisely where the margin exists to protect.
+- **Severity:** high -- it is a spend decision made against a gate that cannot close as written.
+- **Mitigation:** (1) the trial is explicitly scoped as a refutation instrument in
+  `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 3, with what it can and cannot deliver tabulated;
+  (2) stratified sampling (200 unconditional + 100 condition-triggered, with recorded weights) buys a
+  conditional median and IQR, which is the most the budget can reach; (3) latching USD 250 cumulative-loss
+  stop and USD 40 daily stop; (4) staged protocol so the trial can be abandoned after a 10-pair live pilot;
+  (5) `17_EXPECTED_VALUE.md` must record that its Required Safety Margin methodology needs revision or the
+  gate cannot close -- both are legitimate outcomes, silent substitution is not.
+- **Trigger/metric:** cumulative realized cost vs the USD 250 stop; whether any reported p95 is conditional or
+  unconditional.
+- **Owner:** the account owner, who funds it.
+- **Status:** open -- blocking on the Phase graduation criteria and the account precondition before any spend.
 
 ---
 

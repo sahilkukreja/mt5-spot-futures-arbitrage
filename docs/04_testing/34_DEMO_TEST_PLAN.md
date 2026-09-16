@@ -1,7 +1,32 @@
-# Demo Test Plan — Execution Measurement Harness
+# Demo Test Plan — Mechanical Validation of the Execution Harness
 
-Status: **PROPOSED — design only. NOT APPROVED, NOT IMPLEMENTED.**
+Status: **PROPOSED — design only. NOT APPROVED, NOT IMPLEMENTED. SCOPE REDUCED 2026-09-16.**
 Requires `/arb-risk-review` and `/arb-hostile-review` verdicts recorded before any MQL5 is written.
+
+> ## Scope change, 2026-09-16 — read this before the rest of the document
+>
+> This document was written as the project's slippage and latency measurement plan. **That scope has moved to
+> `35_1000_USD_LIVE_TEST_PLAN.md` (D-008), on a live account.**
+>
+> **Why:** `/arb-hostile-review` established (FF-2, FF-3) that demo servers typically fill at the requested
+> price and rarely reject, so demo-measured slippage and rejection rates would be **artefacts, not
+> measurements** — and rejection is the single most documented failure mode this project has, with 408
+> `OpenLeg FAIL` events in under 50 minutes on the legacy live system. Section 3's validity check V1 was the
+> right instinct but too weak: it catches only the laziest failure mode and would certify a demo that
+> synthesises plausible-looking slippage uncorrelated with market conditions.
+>
+> **What remains in scope here, and it is not trivial:** demo is still the correct place to prove the
+> *mechanics* — state machine transitions, idempotency under ambiguous sends, the journal, restart
+> reconciliation, emergency flatten, and the kill switch. Debugging those with real money instead would be
+> paying to learn what a demo teaches free. This is Stage 1 of the live plan's protocol.
+>
+> **Explicitly out of scope here now:** any slippage figure, any rejection rate, any latency number used as
+> evidence. Stage 1 discards those outputs. Sections 2, 3, 9 and the sample-size argument below are retained
+> for the record and for their definitions, but their *measurement* claims are superseded.
+>
+> Sections that remain fully authoritative: §4 (measurement-design decisions), §5 (state machine), §6
+> (guards), §7 (timeouts, idempotency, persistence, recovery), §8 (output schema), §10 (acceptance tests
+> T1–T12). The live plan inherits all of them.
 
 This document designs a **measurement instrument**, not a trading system. It has no signal logic, no profit
 objective, and no path to live capital. Its single purpose is to close blocker **B1** — entry/exit slippage

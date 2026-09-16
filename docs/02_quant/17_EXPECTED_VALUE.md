@@ -227,6 +227,42 @@ from this project's own collected data rather than assumed.
 slippage/latency distribution exists yet — proposing a Required Safety Margin number today would break that
 pattern and violate the mandate's own rule.
 
+### Update 2026-09-16 — this methodology is not achievable at this capital base
+
+The proposed formula needs `p95(round-trip slippage)`. The p95 that matters is of the **conditional**
+distribution — slippage at the moments a signal would actually fire, which are disproportionately the fast,
+wide-spread moments. An unconditional sample is biased low for that population.
+
+The arithmetic, from the 5,843,313-row dataset and the measured USD 0.4975 round-trip cost:
+
+| | Value |
+|---|---|
+| Incidence of elevated spot spread (>3× median) | **0.113% of ticks** |
+| Pairs in that region from n=300 unconditional firing | **≈ 0.34** |
+| n needed for 30 such observations | **≈ 26,500** |
+| Cost of that at USD 0.4975/pair | **≈ USD 13,208 — 13.2× the USD 1,000 ceiling** |
+
+**This is not a budget shortfall; it is permanent at this capital base.** The conditional tail cannot be
+purchased. D-008's stratified design (200 unconditional + 100 condition-triggered, with recorded sampling
+weights) buys a conditional **median and IQR** and a rough p90 — the most the budget reaches — but not a
+defensible p95.
+
+**Consequence for the mandate's gate.** `Net Executable Edge > Required Safety Margin` cannot be evaluated as
+this document currently specifies it. Three honest options, none of them chosen here:
+
+1. **Revise the methodology** to something derivable from a conditional median/IQR plus a distributional
+   assumption — which must then be stated as an assumption in `ASSUMPTIONS.md`, with its own sensitivity.
+2. **Raise the capital base**, which the mandate's USD 1,000 ceiling forbids at this phase.
+3. **Stop**, recording that the gate cannot be closed on this instrument at this capital. This is a
+   legitimate outcome and is consistent with D-006 having already removed the overnight structure.
+
+**What is explicitly not acceptable:** substituting the unconditional p95 for the conditional one. It is cheap
+to obtain, it looks rigorous, and it is biased low exactly where the margin exists to protect. That would be
+the same class of error as the level-vs-change mistake corrected at the top of this document — a correctly
+computed number over the wrong population.
+
+See `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §3.1 and `RISK_REGISTER.md` R-008.
+
 ## Unresolved questions this document depends on
 
 - **Q-002** (open) — price source remains fully open; opposite-direction-position restriction is now answered

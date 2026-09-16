@@ -17,10 +17,10 @@ The mandate specifies 41 documents across six folders. Current state:
 | `01_research/` | 7 | 8 | 3 | `01`–`05` are **NOT STARTED** stubs. `06`, `07` IN PROGRESS. `08` is an extra (tick-collection design). |
 | `02_quant/` | 8 | 7 | 7 | **`15_SIGNAL_RESEARCH.md` does not exist.** `17` is DRAFT; the rest IN PROGRESS. |
 | `03_system_design/` | 10 | 2 | 2 | `20`, `22` both PROPOSED/uncalibrated. `21`, `23`–`29` missing. |
-| `04_testing/` | 6 | 0 | 0 | Empty. |
+| `04_testing/` | 6 | 2 | 2 | `34` (demo mechanical validation) and `35` (live measurement trial), both PROPOSED. `30`–`33` missing. |
 | `05_development/` | 5 | 0 | 0 | Empty. |
 | `06_operations/` | 5 | 0 | 0 | Empty. |
-| **Total** | **41** | **17** | **12** | |
+| **Total** | **41** | **19** | **14** | |
 
 Against the mandate's eight first-milestone questions: **none are fully answered.** Q2 (what relationship to
 trade), Q4 (broker/instrument), Q5 ($1,000 feasibility) and Q6 (what data to collect) have substantive partial
@@ -108,7 +108,10 @@ self-approved.
 
 Constraints it must satisfy:
 
-- **Demo account only.** Never the live $1,000 account.
+- ~~**Demo account only.** Never the live USD 1,000 account.~~ **Reversed 2026-09-16 (D-008).**
+  `/arb-hostile-review` established that demo cannot price slippage or rejection, so a demo-only constraint
+  would have guaranteed an invalid measurement. The trial runs on the live account at 0.01/0.01, budgeted and
+  loss-capped. Demo retains mechanical validation only.
 - **No signal logic whatsoever.** It does not decide when to trade. It opens a hedged 0.01/0.01 pair on a
   fixed schedule or manual trigger, records fills, and flattens immediately.
 - **No profit objective.** Its output is a slippage and latency distribution, not P&L.
@@ -185,7 +188,21 @@ this document.
 futures $0.2430 mean (p99.9 $0.44, max $5.04). Round trip $0.4975, not $0.70. Both legs quote at a near-fixed
 floor with a rare, violent tail, which makes a spread gate unusually cheap and effective.
 
-**Update 2026-09-16 — the harness design (Stage C item, §3) was pulled forward and is now written:**
+**Update 2026-09-16 (later) — the harness moved to a live account, and B1 changed shape.** Both reviews ran.
+`/arb-risk-review` returned `APPROVE WITH CONDITIONS` (safe, but eight corrections). `/arb-hostile-review`
+returned `NOT READY` on validity: the demo design measured the right variable over the wrong population, and
+demo could not price rejection at all. The account owner elected to test on the live account, which resolves
+that. New plan: `04_testing/35_1000_USD_LIVE_TEST_PLAN.md`, proposed as **D-008** — n=300, USD 149.25
+guaranteed cost, latching USD 250 stop, stratified sampling.
+
+**This changes B1's status from "blocked" to "partially unbuyable".** The conditional slippage tail needs
+n≈26,500 (USD 13,208, 13.2× the capital ceiling) and is permanently out of reach. The trial can **refute** the
+intraday thesis cheaply and can never **clear** it, and the mandate's Required Safety Margin is therefore not
+derivable as `17_EXPECTED_VALUE.md` specifies. See R-008. Two blocking preconditions remain: written Phase
+graduation criteria (none exist for any transition), and the 4 open positions whose margin usage would make
+the harness reject every fire.
+
+**Earlier the same day — the harness design (Stage C item, §3) was pulled forward and is now written:**
 `04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs
 `/arb-risk-review` and `/arb-hostile-review` before any MQL5. Pulling it ahead of A4 is defensible because the
 harness measures execution quality, which is independent of whichever signal A4 eventually finds — the two

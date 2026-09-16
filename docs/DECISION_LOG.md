@@ -178,3 +178,35 @@ No further decisions recorded yet.
 - **Invalidation condition:** the validity check fails, or `/arb-hostile-review` establishes that demo
   execution cannot inform live slippage even in principle — in which case B1 stays open and
   `17_EXPECTED_VALUE.md` must say so rather than substituting an assumption.
+
+### D-008: Move the execution measurement trial from demo to the live USD 1,000 / 0.01-lot account
+- **Status:** proposed — supersedes the measurement scope of D-007 (which is reduced to mechanical validation
+  on demo). Requires Phase graduation criteria, the account precondition, a re-run `/arb-risk-review` and a
+  re-run `/arb-hostile-review` before implementation.
+- **Date:** 2026-09-16
+- **Decision:** Run the execution measurement trial on the live account at 0.01/0.01 lot, n=300, budgeted at
+  **USD 149.25 guaranteed cost (14.93% of the capital ceiling)**, capped by a **latching USD 250 cumulative-loss
+  stop**. Sampling is stratified: 200 unconditional pairs plus 100 condition-triggered pairs with recorded
+  sampling weights. Demo retains Stage 1 mechanical validation only. Full design in
+  [`docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md`](04_testing/35_1000_USD_LIVE_TEST_PLAN.md).
+- **Alternatives considered:** (a) demo-only per D-007 — rejected on validity: `/arb-hostile-review` FF-2/FF-3
+  established that demo servers typically fill at the requested price and rarely reject, so demo slippage and
+  rejection rates would be artefacts, and rejection is this project's most documented failure mode (408
+  `OpenLeg FAIL` events in under 50 minutes on the legacy live system); (b) n=100 refutation-minimum at about
+  USD 50 — viable and strictly cheaper, not selected, better median and rejection-rate resolution preferred;
+  (c) abandon measurement and close EV with an assumed slippage figure plus a sensitivity band — rejected as
+  the fabrication the mandate prohibits, but it remains the fallback if this is not funded.
+- **Reason:** slippage and latency are the only `17_EXPECTED_VALUE.md` inputs that no historical tick data can
+  supply, and demo cannot supply them either. Live is the only environment where the numbers mean anything.
+- **Evidence:** `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md`; `/arb-hostile-review` verdict of 2026-09-16
+  (FF-1 through FF-5); measured round-trip cost USD 0.4975 from `02_quant/14_TRANSACTION_COST_MODEL.md`.
+- **Risks:** principally that **real capital is spent on a measurement that cannot clear the mandate's gate
+  even if favourable** (new risk R-008). Populating the conditional slippage tail needs n of roughly 26,500,
+  costing about USD 13,208 — 13.2x the entire capital ceiling — so the Required Safety Margin cannot be derived
+  as `17_EXPECTED_VALUE.md` currently specifies it, at any affordable sample size. The trial is therefore
+  scoped as a **refutation instrument**: it can kill the intraday thesis cheaply and correctly, and can never
+  clear it. Also: orphan legs now cost real money (mitigated by a 3-second orphan timeout, reduced from 30);
+  and the phase skip in `PROJECT_MANDATE.md` (Phase 1 demo bypassed) which is a blocking precondition.
+- **Invalidation condition:** Stage 2's 10-pair live pilot shows fills cannot be reliably attributed to
+  reference prices; or the Required Safety Margin methodology is revised so this measurement is no longer its
+  input; or the account owner withdraws the budget.
