@@ -337,7 +337,15 @@ ReconcileResult StartupReconciling(const string run_id, int pair_seq)
       else if(leg_id == 2)
         {
          leg2_key = key;
-         if(state_s == "HEDGED" || retcode == "SIM_DONE")
+         // ExecuteLeg() journals STATE_LEG1_FILLED for a filled leg
+         // regardless of leg_id -- that constant name is reused
+         // generically for both legs, so "LEG1_FILLED" is the correct
+         // string to match here, not "HEDGED" (a pair-level state
+         // ExecuteLeg never writes at all; RunPairAttempt only sets it
+         // in memory, after both legs are already known to be filled).
+         // The original check was dead code, silently correct only
+         // because of the retcode=="SIM_DONE" fallback beside it.
+         if(state_s == "LEG1_FILLED" || retcode == "SIM_DONE")
            { leg2_filled = true; leg2_price = StringToDouble(parts[13]); }
         }
      }
@@ -717,13 +725,6 @@ SimEvent MakeEvent(ENUM_SIM_RETCODE code, double price = 0, double volume = 0.01
    e.fill_price = price;
    e.fill_volume = volume;
    return e;
-  }
-
-void SetEvents(SimEvent &arr[], SimEvent &a, SimEvent &b, int count)
-  {
-   ArrayResize(arr, count);
-   if(count >= 1) arr[0] = a;
-   if(count >= 2) arr[1] = b;
   }
 
 //--------------------------------------------------------------------
