@@ -158,8 +158,6 @@ def collect(args: argparse.Namespace, run_dir: Path) -> dict[str, Any]:
         open_positions.to_csv(run_dir / "open_positions_censored.csv", index=False)
         open_pairs.to_csv(run_dir / "open_pairs_censored.csv", index=False)
         q4 = analyzer.analyze_q4(pairs, open_positions)
-
-        pair_log = collector.update_pair_log(pairs, open_pairs)
         orphan_candidate_legs = int(len(unmatched_open_spot) + len(unmatched_open_fut))
 
         q3: dict[str, Any] = {
@@ -194,12 +192,11 @@ def collect(args: argparse.Namespace, run_dir: Path) -> dict[str, Any]:
             "closed_pairs": int(len(pairs)),
             "open_positions_censored": int(len(open_positions)),
             "orphan_candidate_legs": orphan_candidate_legs,
-            "pair_log": {
-                "path": str(collector.PAIR_LOG_PATH),
-                "total_tracked_pairs": int(len(pair_log)),
-                "closed": int((pair_log["status"] == "closed").sum()) if len(pair_log) else 0,
-                "open": int((pair_log["status"] == "open").sum()) if len(pair_log) else 0,
-            },
+            "next_step": (
+                "Run tools/pair_ledger.py --reconciled-csv <this run>/reconciled_pairs.csv "
+                "--open-pairs-csv <this run>/open_pairs_censored.csv to merge into the persistent "
+                "research/pair_ledger.csv (Q-004 sample)."
+            ),
             "Q_003": q3,
             "Q_004": q4,
             "research_gate": "Evidence only; no thresholds, trading decision, or live approval is produced.",

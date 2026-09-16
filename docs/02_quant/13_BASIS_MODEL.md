@@ -128,6 +128,18 @@ sample, not a replacement for it. Together, both pieces of evidence point the sa
 resolution is plausible; multi-week behavior remains untested) but neither is individually sufficient to close
 Q-004.
 
+## Persistent pair tracking (Q-004, 2026-09-16)
+
+`tools/pair_ledger.py` (new) merges each run's `reconciled_pairs.csv` into a durable, PairID-keyed ledger at
+`research/pair_ledger.csv` (gitignored like all other raw research output, same as every other artifact in
+this project — periodically promote its summary stats here by hand). PairID = `{spot_position_id}_
+{fut_position_id}`, stable since MT5 position IDs are immutable. Re-running it against future `--pairs`
+collections lets the realized-pair sample keep growing across weeks instead of resetting to whatever a single
+run's account-history window covers — directly addresses Q-004's "n=7 is too small" limitation by making
+n grow over time rather than requiring one large one-off collection. Seeded and verified idempotent this
+session against the existing 7-pair sample (re-running against the same input leaves the ledger at 7 pairs,
+not 14 — confirmed by testing).
+
 ## Main risk
 The measured basis is only valuable if we know whether it is an actual economic edge or merely a normal
 carry pattern — see `12_FAIR_VALUE_MODEL.md`'s implied-carry decomposition (~77% of the average gap is

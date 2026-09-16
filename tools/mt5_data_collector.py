@@ -10,10 +10,10 @@ Answers, from live broker data instead of guesswork:
   - A real distribution of the executable spread/gap between the two legs (mean,
     median, std, percentiles) from historical bars, instead of the two point-in-time
     snapshots currently in docs/02_quant/11_SPREAD_DEFINITION.md.
-  - With --pairs: reconciled closed trade pairs AND currently-open (censored) pairs,
-    merged into a persistent cross-run log at research/pair_log.csv (see
-    update_pair_log()) so the Q-004 time-to-convergence sample keeps growing across
-    repeated runs instead of resetting to one lookback window each time.
+  - With --pairs: reconciled closed trade pairs AND currently-open (censored) pairs
+    (match_open_pairs()), ready to feed into pair_ledger.py's persistent cross-run
+    ledger so the Q-004 time-to-convergence sample keeps growing across repeated runs
+    instead of resetting to one lookback window each time.
 
 Safety:
   - Every MT5 call here is read-only or a calculation. Nothing in this script can open,
@@ -692,19 +692,13 @@ def reconcile_pairs(
 #
 # reconcile_pairs() above only sees CLOSED trades, reset to whatever the lookback
 # window covers each run -- the realized-pair sample never grows beyond one run's
-# window. These functions add: (1) a read-only snapshot of currently-open positions
-# via positions_get(), paired the same way closed trades are; (2) a persistent,
-# append-across-runs log keyed by a stable pair_id (just the two MT5 position_ids,
-# which are already globally unique and stable -- no invented ID scheme needed), so
-# repeated runs accumulate observations instead of resetting to whatever a single
-# lookback window contains. Still fully read-only: no order_send/order_check.
-
-PAIR_LOG_PATH = OUTPUT_ROOT / "pair_log.csv"
-PAIR_LOG_COLUMNS = [
-    "pair_id", "spot_position_id", "fut_position_id", "direction", "volume",
-    "entry_basis", "exit_basis", "basis_change", "duration_hours", "net_pnl",
-    "status", "first_seen_utc", "last_updated_utc",
-]
+# window. This adds a read-only snapshot of currently-open positions via
+# positions_get(), paired the same way closed trades are -- these become the
+# "censored" (still accruing holding time) observations for Q-004. Persisting them
+# across runs into a stable-PairID ledger is tools/pair_ledger.py's job (it merges
+# reconciled_pairs.csv and this section's open_pairs_censored.csv output into
+# research/pair_ledger.csv); this module only produces the per-run snapshot.
+# Still fully read-only: no order_send/order_check.
 
 
 def collect_open_positions(symbols: set) -> "pd.DataFrame":
@@ -794,58 +788,6 @@ def match_open_pairs(
     return pd.DataFrame(rows), pd.DataFrame(unmatched_spot_rows), unmatched_fut_rows
 
 
-def update_pair_log(
-    closed_pairs: "pd.DataFrame",
-    open_pairs: "pd.DataFrame",
-    log_path: Path = PAIR_LOG_PATH,
-) -> "pd.DataFrame":
-    """
-    Merge this run's closed and currently-open pairs into a persistent CSV keyed by
-    pair_id, so the Q-004 realized-pair sample accumulates across repeated runs
-    instead of resetting to one lookback window each time. `status` transitions
-    open -> closed as a pair's exit is observed; closed is terminal (a later "open"
-    observation for the same pair_id never overwrites a closed row -- that would only
-    happen from a stale/reordered run and must not silently corrupt history). Writes
-    only this CSV; no MT5 call is made here.
-    """
-    now = datetime.now(timezone.utc).isoformat()
-    if log_path.exists():
-        log = pd.read_csv(log_path).set_index("pair_id")
-    else:
-        log = pd.DataFrame(columns=PAIR_LOG_COLUMNS).set_index("pair_id")
-
-    for _, row in closed_pairs.iterrows():
-        pid = f"{row['spot_position_id']}_{row['fut_position_id']}"
-        first_seen = log.loc[pid, "first_seen_utc"] if pid in log.index else now
-        log.loc[pid] = {
-            "spot_position_id": row["spot_position_id"], "fut_position_id": row["fut_position_id"],
-            "direction": row["direction"], "volume": row["volume"],
-            "entry_basis": row["entry_basis"], "exit_basis": row["exit_basis"],
-            "basis_change": row["basis_change"], "duration_hours": row["duration_hours"],
-            "net_pnl": row["net_pnl"], "status": "closed",
-            "first_seen_utc": first_seen, "last_updated_utc": now,
-        }
-
-    for _, row in open_pairs.iterrows():
-        pid = row["pair_id"]
-        if pid in log.index and log.loc[pid, "status"] == "closed":
-            continue
-        first_seen = log.loc[pid, "first_seen_utc"] if pid in log.index else now
-        log.loc[pid] = {
-            "spot_position_id": row["spot_position_id"], "fut_position_id": row["fut_position_id"],
-            "direction": row["direction"], "volume": row["volume"],
-            "entry_basis": row["entry_basis"], "exit_basis": None,
-            "basis_change": None, "duration_hours": row["duration_hours_at_snapshot"],
-            "net_pnl": None, "status": "open",
-            "first_seen_utc": first_seen, "last_updated_utc": now,
-        }
-
-    log = log.reset_index().rename(columns={"index": "pair_id"})
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    log.to_csv(log_path, index=False)
-    return log
-
-
 def _main_with_pairs(lookback_days: int, tolerance_seconds: int) -> None:
     """
     Read-only: reconstructs every closed spot/futures pair from account deal
@@ -899,20 +841,14 @@ def _main_with_pairs(lookback_days: int, tolerance_seconds: int) -> None:
                 "an R-003 orphan-leg candidate; verify directly in the terminal."
             )
 
-        log = update_pair_log(pairs, open_pairs)
-        n_closed_total = int((log["status"] == "closed").sum())
-        n_open_total = int((log["status"] == "open").sum())
-        print(f"\n--- Persistent pair log: {PAIR_LOG_PATH} ---")
-        print(f"  Total tracked pairs across all runs: {len(log)} "
-              f"({n_closed_total} closed, {n_open_total} still open/censored)")
-
         print(f"\nAll outputs written to: {run_dir}")
         print(
-            "NEXT STEP: review reconciled_pairs.csv and the unmatched_* files, then\n"
-            "hand-transcribe any material change into docs/02_quant/14_TRANSACTION_COST_MODEL.md\n"
-            "and docs/OPEN_QUESTIONS.md Q-004. The persistent pair_log.csv accumulates across every\n"
-            "run of this tool -- re-run periodically to grow the Q-004 sample beyond one lookback\n"
-            "window. Do NOT commit the research/ folder contents."
+            "NEXT STEP: review reconciled_pairs.csv, open_pairs_censored.csv, and the unmatched_*\n"
+            "files, then hand-transcribe any material change into\n"
+            "docs/02_quant/14_TRANSACTION_COST_MODEL.md and docs/OPEN_QUESTIONS.md Q-004.\n"
+            "Run tools/pair_ledger.py against this run's reconciled_pairs.csv and\n"
+            "open_pairs_censored.csv to grow the persistent Q-004 sample in research/pair_ledger.csv\n"
+            "beyond this one lookback window. Do NOT commit the research/ folder contents."
         )
     finally:
         disconnect()

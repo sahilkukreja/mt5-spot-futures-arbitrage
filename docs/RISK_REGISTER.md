@@ -136,6 +136,14 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   to derive one; not yet done — see Q-003). **New, per the anomaly above:** a static skew threshold is not
   sufficient by itself — mitigation design should also consider per-leg price velocity or a multi-tick
   confirmation window before accepting a signal.
+- **Update 2026-09-16 — velocity check confirmed to work where skew doesn't:** `02_quant/13_BASIS_MODEL.md`
+  computed tick-to-tick futures-leg price velocity across the full 707,467-row dataset (median 0.25 pts/sec,
+  p99.9 8.08 pts/sec, max **161.6 pts/sec**). The single highest-velocity tick in the entire 7-day dataset
+  occurs at 2026-09-11 13:30:01.581 UTC — one tick before this exact anomaly — at roughly 20x the p99.9 rate
+  elsewhere. A proposed research-candidate quote-staleness threshold of **400ms** (close to the p95 of 384ms)
+  is documented in `13_BASIS_MODEL.md`, but since this anomaly's own skew (238ms) sits inside that candidate,
+  skew alone would still miss it — velocity is the mitigation that actually catches this specific failure mode.
+  No numeric velocity threshold is proposed yet (n=1 extreme event is not enough to derive a defensible cutoff).
 - **Owner:** Data and execution research
 - **Status:** open
 
@@ -157,9 +165,13 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   rather than assumed.
 
 ### R-006: Signal/Risk engine cannot enforce "no trading when costs remove edge" yet
-- **Cause:** `02_quant/14_TRANSACTION_COST_MODEL.md` and `17_EXPECTED_VALUE.md` do not exist yet, so the
-  Signal Engine interface defined in `03_system_design/20_SYSTEM_ARCHITECTURE.md` has no real entry/exit
-  threshold to enforce — only a placeholder interface.
+- **Cause:** `02_quant/14_TRANSACTION_COST_MODEL.md` and `17_EXPECTED_VALUE.md` now both exist (2026-09-16) with
+  real, sourced cost and edge evidence, but neither reaches a Net Executable Edge figure — `17_EXPECTED_VALUE.md`
+  explicitly cannot clear the mandate's gate because entry/exit slippage, latency uncertainty, and the
+  execution-risk buffer are unmeasured, and the Required Safety Margin is still undefined (only a proposed
+  methodology exists). So the Signal Engine interface defined in `03_system_design/20_SYSTEM_ARCHITECTURE.md`
+  still has no real, approved entry/exit threshold to enforce — only a placeholder interface, same as before,
+  just for a more specific reason now.
 - **Consequence:** if implementation ever got ahead of documentation, a signal could fire on an
   economically negative-EV gap with no cost-based gate to stop it.
 - **Severity:** high
@@ -167,7 +179,8 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   forbids treating any placeholder threshold as real; no MQL5 exists, so no implementation can currently get
   ahead of this.
 - **Trigger / metric:** any attempt to write `21_EXECUTION_ENGINE.md`/`22_STATE_MACHINE.md` with a concrete
-  numeric signal threshold before `14_TRANSACTION_COST_MODEL.md` and `17_EXPECTED_VALUE.md` are complete.
+  numeric signal threshold before `17_EXPECTED_VALUE.md` reaches a real (not provisional/sensitivity-table-only)
+  Net Executable Edge figure with a defined Required Safety Margin.
 - **Owner:** Quant research / design
 - **Status:** open
 

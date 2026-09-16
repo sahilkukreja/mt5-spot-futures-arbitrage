@@ -20,7 +20,7 @@ never retroactively look like it was always closed; the ledger keeps `first_seen
 Example:
     python tools/pair_ledger.py \
         --reconciled-csv research/2026-09-15T190918Z/reconciled_pairs.csv \
-        --censored-csv research/2026-09-15T190918Z/open_positions_censored.csv \
+        --open-pairs-csv research/2026-09-15T190918Z/open_pairs_censored.csv \
         --ledger research/pair_ledger.csv
 
 Re-run this against each new `--pairs` collection run's output; the ledger accumulates in place.
@@ -68,14 +68,46 @@ def load_reconciled(path: Path) -> pd.DataFrame:
                   "entry_basis", "exit_basis", "basis_change", "duration_hours", "net_pnl"]]
 
 
+def load_open_pairs(path: Path | None) -> pd.DataFrame:
+    """Preferred source for open/censored pairs: `open_pairs_censored.csv`, produced by
+    `mt5_data_collector.py`'s `match_open_pairs()` (same greedy nearest-time/direction/volume
+    matching `reconcile_pairs()` uses for closed trades -- not a naive cross-product). Returns an
+    empty frame if the path is missing/empty rather than guessing.
+    """
+    empty = pd.DataFrame(columns=["pair_id", "spot_position_id", "fut_position_id", "direction",
+                                   "volume", "status", "entry_basis", "exit_basis", "basis_change",
+                                   "duration_hours", "net_pnl"])
+    if path is None or not path.exists() or not path.read_text(encoding="utf-8").strip():
+        return empty
+    frame = pd.read_csv(path)
+    if frame.empty:
+        return empty
+    return pd.DataFrame({
+        "pair_id": frame["pair_id"],
+        "spot_position_id": frame["spot_position_id"],
+        "fut_position_id": frame["fut_position_id"],
+        "direction": frame["direction"],
+        "volume": frame["volume"],
+        "status": "OPEN",
+        "entry_basis": frame["entry_basis"],
+        "exit_basis": None,
+        "basis_change": None,
+        "duration_hours": frame["duration_hours_at_snapshot"],
+        "net_pnl": None,
+    })
+
+
 def load_censored_pairs(path: Path | None) -> pd.DataFrame:
-    """Best-effort: only produces rows if the censored CSV contains both legs of an open pair.
+    """Fallback only, for older run directories that predate `open_pairs_censored.csv`
+    (prefer `load_open_pairs()` / `--open-pairs-csv` whenever that file is available).
 
     `open_positions_censored.csv` is per-leg (one row per open position), not per-pair, so this
-    pairs same-timestamp opposite-direction rows across the two known symbols. If the schema or
-    contents don't support that (e.g. only one leg present, or the file is empty), it returns an
-    empty frame rather than guessing -- an incompletely-paired open position must not silently
-    enter the ledger as a fabricated pair.
+    pairs same-timestamp opposite-direction rows across the two known symbols via a same-symbol
+    cross-product. Unlike `load_open_pairs()`, this can fabricate spurious pairs if more than one
+    spot and one futures position are open simultaneously (every spot row is paired with every
+    futures row) -- acceptable only because it's a last-resort fallback for old data, not the
+    primary path. If the schema or contents don't support pairing (e.g. only one leg present, or
+    the file is empty), it returns an empty frame rather than guessing.
     """
     empty = pd.DataFrame(columns=["pair_id", "spot_position_id", "fut_position_id", "direction",
                                    "volume", "status", "entry_basis", "exit_basis", "basis_change",
@@ -163,7 +195,12 @@ def summarize(ledger: pd.DataFrame) -> dict:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Persistent cross-run ledger of reconciled pairs (Q-004).")
     parser.add_argument("--reconciled-csv", type=Path, required=True, help="reconciled_pairs.csv from this run")
-    parser.add_argument("--censored-csv", type=Path, help="open_positions_censored.csv from this run, if any")
+    parser.add_argument("--open-pairs-csv", type=Path,
+                         help="open_pairs_censored.csv from this run, if any (preferred -- already "
+                              "correctly matched by mt5_data_collector.py's match_open_pairs())")
+    parser.add_argument("--censored-csv", type=Path,
+                         help="open_positions_censored.csv from this run (fallback only, for run "
+                              "directories predating --open-pairs-csv; ignored if --open-pairs-csv is given)")
     parser.add_argument("--ledger", type=Path, default=Path("research/pair_ledger.csv"),
                          help="Persistent ledger path (default: research/pair_ledger.csv)")
     return parser.parse_args()
@@ -173,7 +210,7 @@ def main() -> None:
     args = parse_args()
     existing = pd.read_csv(args.ledger) if args.ledger.exists() else pd.DataFrame(columns=LEDGER_COLUMNS)
     new_closed = load_reconciled(args.reconciled_csv)
-    new_open = load_censored_pairs(args.censored_csv)
+    new_open = load_open_pairs(args.open_pairs_csv) if args.open_pairs_csv else load_censored_pairs(args.censored_csv)
 
     now_iso = datetime.now(timezone.utc).isoformat()
     ledger = merge_ledger(existing, new_closed, new_open, now_iso)

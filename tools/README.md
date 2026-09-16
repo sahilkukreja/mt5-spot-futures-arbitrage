@@ -37,6 +37,11 @@ Connects to an already-running, already-logged-in MT5 terminal (VPFX-Live or VPF
    - `reverse_basis = Ask(GC-Z26) − Bid(XAUUSD.vx)` — executable for BUY futures / SELL spot
    This is what `docs/02_quant/14_TRANSACTION_COST_MODEL.md` and `17_EXPECTED_VALUE.md` require.
 
+5. **Paired-trade reconciliation** (requires `--pairs` flag) — reconstructs every closed spot/futures pair
+   from account deal history (`reconciled_pairs.csv`), plus a snapshot of currently-open positions matched the
+   same way (`open_positions_censored.csv`, `open_pairs_censored.csv`) as censored Q-004 observations. Feed
+   both CSVs to `pair_ledger.py` (below) to accumulate the Q-004 sample across repeated runs.
+
 ### Requirements
 
 - **Windows** with the MT5 terminal installed, running, and logged into the VPFX account already. The
@@ -53,6 +58,9 @@ python tools/mt5_data_collector.py
 
 # Full run including tick-level bid/ask collection (requires VMware setup):
 python tools/mt5_data_collector.py --ticks
+
+# Paired-trade reconciliation (closed pairs + currently-open censored pairs):
+python tools/mt5_data_collector.py --pairs
 ```
 
 See `docs/01_research/08_TICK_DATA_COLLECTION.md` for the step-by-step validation checklist before
@@ -77,6 +85,23 @@ Review the numbers yourself, then hand-transcribe whatever is decision-relevant 
 documents (same discipline as the manual Specification-window transcription in
 `docs/01_research/07_BROKER_RESEARCH.md`). Do not treat script output as an approved research document,
 and do not commit the `research/` output folder's contents.
+
+## `q3_q4_research.py` and `pair_ledger.py` (offline, no MT5 connection)
+
+Unlike `mt5_data_collector.py`, these two consume the CSV/JSON files `mt5_data_collector.py` already produced
+— they never connect to MT5 and run on any platform with `pandas`/`numpy`.
+
+- **`q3_q4_research.py`** — analyzes an existing `basis_synchronized.csv` and `reconciled_pairs.csv` for Q-003
+  (quote-skew/stale-quote evidence), Q-004 (realized-pair duration stats and a tick-level mean-reversion decay
+  proxy), an isolated R-004 anomaly lookup, and (with `--expiry-date`/`--sofr-rate`) a fair-value implied-carry
+  decomposition. See the module docstring for the full flag list and an example invocation.
+- **`pair_ledger.py`** — merges each run's `reconciled_pairs.csv` and `open_pairs_censored.csv` (both from
+  `mt5_data_collector.py --pairs`) into a persistent, PairID-keyed ledger at `research/pair_ledger.csv` so the
+  Q-004 realized-pair sample accumulates across repeated runs over time instead of resetting. Prefer
+  `--open-pairs-csv` over the older `--censored-csv` (the latter is a same-symbol-cross-product fallback that
+  can fabricate spurious pairs if more than one spot/futures position is open at once — `open_pairs_censored.csv`
+  is already correctly matched by `match_open_pairs()`, the same logic `reconcile_pairs()` uses for closed
+  trades). Re-run it after every future `--pairs` collection.
 
 ### What this does *not* answer
 

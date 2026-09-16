@@ -31,7 +31,7 @@ and report the status of each component honestly rather than filling gaps with a
 | Expected exit slippage | **Unmeasured** | Same as above |
 | Latency uncertainty | **Unmeasured** | Same as above; `quote_skew_ms` (mean 130.6ms, p95 384ms) measures cross-leg *quote* skew, not order-to-fill latency, and is not a substitute |
 | Execution-risk buffer | **Unmeasured / undefined** | Mandate requires this be tied to measured execution data, not chosen arbitrarily — cannot be set until slippage/latency trials exist |
-| Required Safety Margin | **Undefined** | Not yet specified anywhere in the project; a precondition for evaluating the mandate's gate, independent of the edge calculation itself |
+| Required Safety Margin | **Undefined — methodology proposed 2026-09-16** | No value set; a proposed derivation method now exists (see "Required Safety Margin" section below) tying it to the future Phase 1 slippage/latency distribution, but it still requires that trial's data before a number can be computed |
 
 ## Provisional sensitivity table — measured components only
 
@@ -89,9 +89,36 @@ it is the only way to measure entry/exit slippage and order-to-fill latency, whi
 else collected so far can substitute for. Everything else in the component inventory above now has either a
 real sourced measurement or a named, specific reason it remains open.
 
+## Required Safety Margin — proposed methodology, not a value (2026-09-16)
+
+The mandate's gate (`Net Executable Edge > Required Safety Margin`) needs a Required Safety Margin, and none
+exists anywhere in this project. Per the mandate's own `NO MAGIC OAG/CAG VALUES` rule ("derive thresholds from
+data"), this section proposes *how* to derive it once the inputs exist — not a number now, since picking one
+today would be exactly the fabrication the mandate prohibits.
+
+**Proposed methodology:** tie the Required Safety Margin to the measured uncertainty of the components that
+are currently unmeasured — entry/exit slippage and latency, both blocked on a Phase 1 demo-execution trial
+(see "Smallest next empirical test" above). Once that trial produces a real slippage distribution:
+
+`Required Safety Margin = k × p95(round-trip slippage + latency-driven adverse movement)`
+
+for some conservative multiplier `k ≥ 1` (candidate `k=2`, itself to be justified against the trial's own
+sample size and variance once real numbers exist — a small trial with high variance in its own p95 estimate
+would need a larger `k` to stay conservative, not a fixed one chosen in advance). This ties the margin to the
+project's own measured execution reality rather than an externally borrowed rule of thumb, consistent with how
+every other threshold in this project (quote-staleness candidates, margin-stress candidate) has been derived
+from this project's own collected data rather than assumed.
+
+**Why not propose a number now:** every other candidate threshold in this project so far (quote-staleness
+400ms, margin-stress multiplier) was derived from a real, sourced distribution already collected. No
+slippage/latency distribution exists yet — proposing a Required Safety Margin number today would break that
+pattern and violate the mandate's own rule.
+
 ## Unresolved questions this document depends on
 
-- **Q-002** (open) — price source and opposite-direction-position restriction remain fully open.
+- **Q-002** (open) — price source remains fully open; opposite-direction-position restriction is now answered
+  empirically (8 real instances, all filled, see `OPEN_QUESTIONS.md`), but rollover timing/mechanics is still
+  open.
 - **Q-004** (open) — time-to-convergence; this document's sensitivity table sidesteps it by presenting cost
   across a holding-period range rather than picking one, but a real expected-value number still needs a real
   holding-period distribution, not a range.
