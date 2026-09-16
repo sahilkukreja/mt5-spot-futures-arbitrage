@@ -205,9 +205,16 @@ derivable as `17_EXPECTED_VALUE.md` specifies. See R-008.
 pipeline names an undefined LIVE OBSERVATION stage between demo and the forward test, and D-008's trial —
 zero signal logic, zero profit objective — belongs there rather than at the USD 1,000/0.01 LOT FORWARD TEST,
 since no strategy exists yet to forward-test. Completing D-008 does not graduate the project past LIVE
-OBSERVATION. **Still open:** the 4 open positions whose margin usage would make the harness reject every fire
-(account owner's decision — dedicated account vs. closing them), and risk/hostile verdicts re-run against the
-live plan specifically, since the existing ones covered the demo-only design.
+OBSERVATION.
+
+**Update 2026-09-16 (later still) — account precondition decided.** The account owner chose a dedicated live
+account (USD 1,000, no other positions) over closing the 4 existing pairs on the current account, isolating
+the measurement's cost accounting from unrelated P&L. **Not yet satisfied** — opening and funding that account
+is a broker KYC step outside this project's tooling, and is the account owner's to complete. See
+`04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 7.
+
+**Still open:** the new account actually being opened and funded, and risk/hostile verdicts re-run against
+the live plan specifically, since the existing ones covered the demo-only design.
 
 **Earlier the same day — the harness design (Stage C item, §3) was pulled forward and is now written:**
 `04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs
