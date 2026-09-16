@@ -102,6 +102,13 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   the "edge" being sized against costs is real or partly an artifact of comparing against the wrong baseline.
 
 ### R-003: Unmatched or partially filled hedge leg
+- **Update 2026-09-16 — this risk becomes measurable for the first time under D-007.** The harness designed
+  in `04_testing/34_DEMO_TEST_PLAN.md` records `legging_window` (ms of unhedged exposure between the two leg
+  fills) and `legging_drift` (how far the basis moved during that window) for every pair, and deliberately
+  uses *sequential* leg submission so the window is visible rather than confounded. Leg order is randomised
+  per pair, which also tests whether the legacy system's heavily asymmetric failure counts (`XAUUSD.pp` 359
+  vs `GCJ26.ma` 49) were a property of the symbol, the submission order, or the venue. Until that trial runs,
+  this risk remains bounded only by reasoning, not by data.
 - **Cause:** asynchronous acceptance, rejection, partial fill, latency, disconnection, or unsupported filling mode
 - **Consequence:** unintended directional gold exposure and rapid loss
 - **Severity:** critical
@@ -230,6 +237,27 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   Net Executable Edge figure with a defined Required Safety Margin.
 - **Owner:** Quant research / design
 - **Status:** open
+
+### R-007: Demo execution may not model slippage, producing a falsely safe Required Safety Margin
+- **Raised:** 2026-09-16
+- **Cause:** many broker demo servers fill orders at the requested price with no adverse deviation. If VPFX's
+  demo behaves that way, the D-007 measurement harness would record `slippage ~ 0` across every pair.
+- **Consequence:** worse than having no data. The mandate's gate is
+  `Net Executable Edge > Required Safety Margin`, and `17_EXPECTED_VALUE.md` derives that margin from
+  `k x p95(round-trip slippage + latency-driven adverse movement)`. A p95 of zero collapses the margin to
+  zero and makes the gate trivially passable — the strategy would look safe precisely because the instrument
+  was blind. This is a measurement-validity failure that presents as a favourable result, which is the kind
+  most likely to be acted on.
+- **Severity:** high — it attacks the credibility of the one measurement that unblocks the economics gate.
+- **Mitigation:** validity check V1 in `04_testing/34_DEMO_TEST_PLAN.md` section 3, run after the first 50
+  pairs: if >90% of legs show exactly zero deviation, or the distribution has zero variance, declare the demo
+  environment non-representative for slippage and **halt**. Latency, retcode and legging-window measurements
+  remain valid regardless and are still collected.
+- **Trigger/metric:** fraction of legs with exactly zero `slippage_i`; variance of the slippage distribution.
+- **Owner:** whoever runs the D-007 trial.
+- **Status:** open — cannot be assessed until the harness reaches Stage 2. If it fires, B1 stays open and the
+  only remaining route to slippage is a bounded live micro-trial, which is a separate decision and is
+  explicitly not proposed.
 
 ---
 

@@ -151,3 +151,30 @@ No further decisions recorded yet.
 - **Invalidation condition:** a sustained spot swap rate whose cost falls below the measured basis decay
   (roughly, spot `swap_long` better than −39 points/day at current spot prices and time to expiry), or
   evidence that the decay rate is materially higher than measured over a longer or different window.
+
+### D-007: Build a demo-only execution measurement harness to close blocker B1
+- **Status:** proposed (requires `/arb-risk-review` and `/arb-hostile-review` verdicts before implementation)
+- **Date:** 2026-09-16
+- **Decision:** Build a measurement-only harness — demo account, no signal logic, fixed scheduler, hedged
+  0.01/0.01 `XAUUSD.vx`/`GC-Z26` pair opened and flattened within the session — to measure entry/exit
+  slippage, order-to-fill latency, and the legging window. Staged: dry run, 10 supervised pairs, 50 pairs plus
+  a validity check, then n>=300 stratified. Full design in
+  [`docs/04_testing/34_DEMO_TEST_PLAN.md`](04_testing/34_DEMO_TEST_PLAN.md).
+- **Alternatives considered:** (a) close EV with an assumed slippage figure plus a sensitivity band —
+  rejected as the fabrication the mandate's `NO MAGIC OAG/CAG VALUES` rule prohibits, though it remains the
+  honest fallback if this is rejected; (b) build the full execution engine and measure as a side effect —
+  rejected, inverts the gate order; (c) a bounded live micro-trial — rejected as a first step, reconsider only
+  if the demo proves non-representative.
+- **Reason:** slippage and latency are the only inputs to `17_EXPECTED_VALUE.md` that no amount of historical
+  tick data can supply. They gate the Required Safety Margin, which gates the economics gate, which gates the
+  design gate and therefore the EA. Nothing else unblocks them.
+- **Evidence:** `docs/04_testing/34_DEMO_TEST_PLAN.md`; blocker B1 in `docs/ROADMAP.md`;
+  `docs/02_quant/17_EXPECTED_VALUE.md` -> "Required Safety Margin".
+- **Risks:** principally that **demo execution may not model slippage at all** (new risk R-007) — many demo
+  servers fill at the requested price, which would yield a misleadingly safe Required Safety Margin. The design
+  handles this with an explicit validity check after 50 pairs that halts the trial rather than reporting a
+  zero. Also: harness code being reused as production execution (mitigated by quarantine), and orphan legs on
+  demo (mitigated by emergency flatten plus a latching kill switch).
+- **Invalidation condition:** the validity check fails, or `/arb-hostile-review` establishes that demo
+  execution cannot inform live slippage even in principle — in which case B1 stays open and
+  `17_EXPECTED_VALUE.md` must say so rather than substituting an assumption.

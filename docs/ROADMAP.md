@@ -185,6 +185,12 @@ this document.
 futures $0.2430 mean (p99.9 $0.44, max $5.04). Round trip $0.4975, not $0.70. Both legs quote at a near-fixed
 floor with a rare, violent tail, which makes a spread gate unusually cheap and effective.
 
+**Update 2026-09-16 — the harness design (Stage C item, §3) was pulled forward and is now written:**
+`04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs
+`/arb-risk-review` and `/arb-hostile-review` before any MQL5. Pulling it ahead of A4 is defensible because the
+harness measures execution quality, which is independent of whichever signal A4 eventually finds — the two
+tracks do not block each other and can proceed in either order.
+
 **Next: A4 — write `15_SIGNAL_RESEARCH.md`**, ahead of A3 and A5.
 
 The reordering is deliberate. A3 (de-trended decay re-run) was going to answer "how fast does the basis revert"

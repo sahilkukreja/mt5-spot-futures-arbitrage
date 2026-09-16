@@ -65,8 +65,13 @@ stress multiplier?
   not the binding risk at 0.01 lot** — even a 20% adverse price move only adds ≈$26 to the ≈$130 baseline
   margin (margin level stays >600%); the real stress risk at this size is notional directional exposure during
   a leg mismatch (R-003), not margin recalculation. See `01_research/07_BROKER_RESEARCH.md` → "Margin-stress
-  multiplier candidate". **Orphan-leg timeout: confirmed still blocked**, no change — no signal-to-fill latency
-  data exists without a live/demo execution trial, and nothing in the collected data proxies for it. See
+  multiplier candidate". **Orphan-leg timeout: still uncalibrated, but a measurement path now exists
+  (2026-09-16).** The blocking condition was correct and unchanged — no signal-to-fill latency data exists
+  without a live/demo execution trial, and nothing in the collected data proxies for it. What is new is that
+  `04_testing/34_DEMO_TEST_PLAN.md` (D-007, proposed) now specifies that trial: its `legging_window` output —
+  elapsed ms between leg 1 fill and leg 2 fill, across n≥300 stratified pairs, with leg order randomised —
+  would be the first empirical basis this project has for the orphan-leg timeout. Until that trial runs *and*
+  clears its validity check (R-007), the parameter stays uncalibrated and no number may be adopted. See
   `02_quant/13_BASIS_MODEL.md` for the quote-staleness/velocity and orphan-leg-timeout write-ups, and
   `tools/research_questions.py` / `research/2026-09-15T190918Z/research_questions_summary.json` for the
   underlying Q-003 measurement.

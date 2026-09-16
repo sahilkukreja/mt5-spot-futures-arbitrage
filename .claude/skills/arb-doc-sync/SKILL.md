@@ -38,9 +38,9 @@ Sweeps have repeatedly found these; check them specifically:
 
 - Documents claiming another document "does not exist yet" or is "NOT STARTED" when it now has content.
 - Q-002/Q-003/Q-004 sub-items resolved in one document but still listed open in another.
-- Superseded numeric constants surviving in secondary documents: **$0.30/leg spread** (now $0.1545 / $0.2430),
-  **$7.50 futures commission** (now $10/lot), any **AR(1) half-life** (withdrawn), the **$0.70 round trip**
-  (now $0.4975).
+- Superseded numeric constants surviving in secondary documents: **USD 0.30/leg spread** (now USD 0.1545 / USD 0.2430),
+  **USD 7.50 futures commission** (now USD 10/lot), any **AR(1) half-life** (withdrawn), the **USD 0.70 round trip**
+  (now USD 0.4975).
 - The mandate-checklist section of `OPEN_QUESTIONS.md` drifting out of sync with the per-question entries
   above it.
 - `.claude/skills/PROJECT_STATE.md` — a cache of project state that goes stale by design. Re-sync it when

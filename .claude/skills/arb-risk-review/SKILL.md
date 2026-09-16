@@ -36,11 +36,11 @@ Return `APPROVE`, `APPROVE WITH CONDITIONS`, or `REJECT`, followed by decisive e
 ## Project-specific risk inputs (2026-09-16)
 
 - **R-002 has materialized, not just been identified.** Net carry on the overnight convergence structure is
-  **-$0.3809/day with a 95% CI entirely below zero**. See D-006. Any proposal relying on overnight basis
+  **-USD 0.3809/day with a 95% CI entirely below zero**. See D-006. Any proposal relying on overnight basis
   convergence should be rejected on this basis alone.
-- Margin: about $129.67 combined per 0.01/0.01 pair. 4 concurrent pairs gives about $525, margin level about
+- Margin: about USD 129.67 combined per 0.01/0.01 pair. 4 concurrent pairs gives about USD 525, margin level about
   191% (vs about 771% for one). Margin-stress is **not** the binding risk at this size — a 20% adverse move
-  adds only about $26. The binding risk is notional directional exposure during a leg mismatch (R-003).
+  adds only about USD 26. The binding risk is notional directional exposure during a leg mismatch (R-003).
 - Swap is asymmetric and one-sided: spot -60 pts/day long, +40 short; futures disabled.
 - Rollover: no successor symbol exists (R-005). Expiry 25 Nov 2026 with no machine-readable expiry field.
 - Orphan-leg timeout remains **uncalibrated and unmeasurable** without a live/demo execution trial. Do not

@@ -54,8 +54,8 @@ These are earned evidence, not suggestions. Carry them into every design documen
 - **Rollover is a design requirement.** This account's symbol universe is exactly 2 symbols. There is **no
   successor contract month to roll into**, and `GC-Z26.expiration_time` reads 0 — no machine-readable expiry.
   The system cannot assume a successor symbol will appear (R-005).
-- **A spread gate is unusually cheap here.** Both legs quote at a near-fixed floor (spot p99 = median = $0.15)
-  with a rare violent tail (spot max $12.15). Rejecting entry above roughly 2x median would reject well under
+- **A spread gate is unusually cheap here.** Both legs quote at a near-fixed floor (spot p99 = median = USD 0.15)
+  with a rare violent tail (spot max USD 12.15). Rejecting entry above roughly 2x median would reject well under
   1% of ticks and eliminate the tail. Derive the actual threshold; do not adopt that number.
 - **Skew alone has a confirmed blind spot.** The R-004 anomaly's own skew was 238 ms — inside the 400 ms
   candidate. A per-leg price-velocity check is a better-targeted complementary signal, but one extreme event

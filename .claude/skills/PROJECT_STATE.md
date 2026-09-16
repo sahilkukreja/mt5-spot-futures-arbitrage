@@ -36,35 +36,35 @@ holding period**, and this is measured, not estimated:
 
 `E[P&L] = −0.3809·H − 0.4975`. Proposed **D-006** rejects this structure.
 
-**The error that hid it for weeks:** the EV model compared costs against the basis **level** (~$41), which
+**The error that hid it for weeks:** the EV model compared costs against the basis **level** (~USD 41), which
 assumes the whole gap is capturable. A pair opened at `B₀` and closed at `B₁` earns `B₀ − B₁`. The revenue term
 — the decay rate — had never been measured. *Generalize this: always check that the revenue side of a model is
 measured, not just the cost side.*
 
-**What survives:** intraday. Swap accrues only overnight. Median daily range of `convergence_basis` is **$7.91**
-against a **$0.4975** round trip, and all 38 full sessions exceeded 4× the round trip. That is opportunity, not
+**What survives:** intraday. Swap accrues only overnight. Median daily range of `convergence_basis` is **USD 7.91**
+against a **USD 0.4975** round trip, and all 38 full sessions exceeded 4× the round trip. That is opportunity, not
 demonstrated edge — no signal exists and slippage is unmeasured.
 
-**The reverse direction** (BUY futures / SELL spot) nets +$0.1238/day. Recorded, **not recommended**: it is
-swap harvesting on a broker-set credit that can change without notice, and is small against a $2.77 residual
+**The reverse direction** (BUY futures / SELL spot) nets +USD 0.1238/day. Recorded, **not recommended**: it is
+swap harvesting on a broker-set credit that can change without notice, and is small against a USD 2.77 residual
 std. See `17_EXPECTED_VALUE.md`.
 
 ## Measured constants (sourced — never re-assume these)
 
 | Quantity | Value | Note |
 |---|---|---|
-| Spot spread | mean **$0.1545**, median 0.15, p99 0.15, max **12.15** | near-fixed floor, violent rare tail |
-| Futures spread | mean **$0.2430**, median 0.24, p99 0.25, max **5.04** | same shape |
-| Round trip, 0.01/0.01 | **$0.4975** | spread $0.3975 + futures commission $0.10 |
-| Spot commission | $0.00 | live deal history |
-| Futures commission | $10/lot round trip → $0.10 at 0.01 | |
+| Spot spread | mean **USD 0.1545**, median 0.15, p99 0.15, max **12.15** | near-fixed floor, violent rare tail |
+| Futures spread | mean **USD 0.2430**, median 0.24, p99 0.25, max **5.04** | same shape |
+| Round trip, 0.01/0.01 | **USD 0.4975** | spread USD 0.3975 + futures commission USD 0.10 |
+| Spot commission | USD 0.00 | live deal history |
+| Futures commission | USD 10/lot round trip → USD 0.10 at 0.01 | |
 | Spot swap | −60 pts/day long, +40 short; ×3 Wednesdays | futures swap disabled |
-| Combined margin, 1 pair | ≈$129.67 | 0.01/0.01 |
+| Combined margin, 1 pair | ≈USD 129.67 | 0.01/0.01 |
 | Quote skew | p95 **387 ms**, p99 460 ms | 400 ms is a *candidate*, not approved |
 | Contract size | 100 for **both** legs | why 0.01/0.01 is delta-flat (D-002) |
 | Implied carry rate | 4.71% | stable across 7-day and 45-day windows |
 
-Superseded, do not use: $0.30/leg spread, $7.50 futures commission, any AR(1) half-life.
+Superseded, do not use: USD 0.30/leg spread, USD 7.50 futures commission, any AR(1) half-life.
 
 ## Canonical dataset
 
@@ -109,5 +109,5 @@ Symbol universe is **exactly 2 symbols**: `XAUUSD.vx`, `GC-Z26`. No other gold-f
 successor contract to roll into before the 25 Nov 2026 expiry, and `expiration_time` reads 0 (no
 machine-readable expiry). This is a **design** requirement, not an ops afterthought (R-005).
 
-4 concurrent pairs were observed open on 2026-09-16 (not this project's output), margin ≈$525, margin level
+4 concurrent pairs were observed open on 2026-09-16 (not this project's output), margin ≈USD 525, margin level
 ≈191%.

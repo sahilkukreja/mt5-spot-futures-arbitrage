@@ -41,8 +41,8 @@ List fatal flaws first, then unsupported assumptions, sensitivity/break-even ana
 ## An attack that already succeeded — use it as a template
 
 The EV model was wrong by a **sign**, and every cost line in it was correctly sourced. The failure was that
-the *revenue* side was never modelled: it compared costs against the basis **level** (about $41) rather than
-the basis **change**, so it reported +$33.60 for a 10-day hold where the truth is -$4.31.
+the *revenue* side was never modelled: it compared costs against the basis **level** (about USD 41) rather than
+the basis **change**, so it reported +USD 33.60 for a 10-day hold where the truth is -USD 4.31.
 
 Add this to the standing attack list, ahead of the cost-completeness checks:
 
@@ -53,5 +53,5 @@ Add this to the standing attack list, ahead of the cost-completeness checks:
   decays on a schedule and is fully offset by financing.
 
 Also already established, so do not spend the review re-litigating: D-006 rejects hold-to-convergence; the
-reverse direction nets +$0.1238/day and is rejected as swap harvesting small relative to a $2.77 residual std;
+reverse direction nets +USD 0.1238/day and is rejected as swap harvesting small relative to a USD 2.77 residual std;
 slippage and latency remain entirely unmeasured, so **no proposal depending on them can receive `READY`**.
