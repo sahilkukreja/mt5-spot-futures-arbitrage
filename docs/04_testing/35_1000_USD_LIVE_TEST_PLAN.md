@@ -30,24 +30,27 @@ Live replaces it with a different one: **every measurement costs real money and 
 This is a deliberate, budgeted purchase of information. It is **not** a trade, has **no** profit objective,
 and its P&L is a cost line, never a success criterion.
 
-## 2. Phase position — an explicit gap that must be closed first
+## 2. Phase position — resolved 2026-09-16, one item still open
 
-The mandate defines Phase 0 as *data collection only*, Phase 1 as *demo trading*, Phase 2 as
-*USD 1,000 / 0.01 lot*, and states that **"each phase requires explicit graduation criteria."**
+**Update 2026-09-16:** `06_operations/PHASE_GRADUATION_CRITERIA.md` now fills the gap this section originally
+flagged as a blocking mandate violation. Summary of what changed:
 
-This trial is a Phase 2 activity. The project is in Phase 0. It skips Phase 1, and **no graduation criteria
-exist anywhere in this project for any phase transition.** That is a live, blocking mandate violation, not a
-formality.
+- The mandate actually specifies **two** frameworks — a phase list (0–6) and a separate stage pipeline that
+  names an undefined **LIVE OBSERVATION** stage between DEMO TESTING and the USD 1,000/0.01 LOT FORWARD TEST.
+  This trial belongs at LIVE OBSERVATION, not at the forward test: it is live and capital-bounded, but has
+  **zero signal logic and zero profit objective** (§1, §3), so it observes the venue, not a strategy. There is
+  no strategy yet to forward-test — `15_SIGNAL_RESEARCH.md` is unwritten and D-006 has already rejected one
+  candidate structure. Completing this trial does **not** graduate the project to the forward test; that
+  transition has its own separate criteria, none of which this trial satisfies by itself.
+- Graduation criteria for DEMO TESTING → LIVE OBSERVATION are now written. Restated here: Stage 0 (dry run)
+  passes T1–T12; Stage 1 (20 demo pairs) completes with zero reconciliation mismatches, its slippage/rejection
+  output discarded per §1 above; `/arb-risk-review` and `/arb-hostile-review` verdicts recorded **against this
+  live plan specifically** (the existing verdicts were recorded against the demo-only design and do not cover
+  live capital); D-008 accepted; the account precondition (§7) resolved; the capital owner explicitly
+  authorizes the budget before the first live order.
 
-Two things must be true before implementation:
-
-1. **Phase graduation criteria are written** (proposed home: `docs/06_operations/` or a new
-   `04_testing/30_BACKTEST_LIMITATIONS.md` companion). At minimum: what must be demonstrated to enter Phase 2,
-   what evidence closes it, and what forces a return to an earlier phase.
-2. **Phase 1 is either satisfied or explicitly waived with a recorded reason.** The recommended route is
-   *satisfied, not waived*: run `34_DEMO_TEST_PLAN.md`'s reduced mechanical-validation scope on demo first
-   (§8 Stage 1). Demo cannot price slippage, but it can prove the state machine, idempotency, journal and
-   reconciliation work — and doing that with real money instead is simply paying to debug.
+**What remains open:** the account precondition (§7) and re-run risk/hostile verdicts against this document.
+Everything else that blocked implementation is now written.
 
 ## 3. What this trial can and cannot deliver
 

@@ -198,9 +198,16 @@ guaranteed cost, latching USD 250 stop, stratified sampling.
 **This changes B1's status from "blocked" to "partially unbuyable".** The conditional slippage tail needs
 n≈26,500 (USD 13,208, 13.2× the capital ceiling) and is permanently out of reach. The trial can **refute** the
 intraday thesis cheaply and can never **clear** it, and the mandate's Required Safety Margin is therefore not
-derivable as `17_EXPECTED_VALUE.md` specifies. See R-008. Two blocking preconditions remain: written Phase
-graduation criteria (none exist for any transition), and the 4 open positions whose margin usage would make
-the harness reject every fire.
+derivable as `17_EXPECTED_VALUE.md` specifies. See R-008.
+
+**Update 2026-09-16 (later still) — one of two blocking preconditions resolved.**
+`06_operations/PHASE_GRADUATION_CRITERIA.md` fills the "no graduation criteria exist" gap: the mandate's stage
+pipeline names an undefined LIVE OBSERVATION stage between demo and the forward test, and D-008's trial —
+zero signal logic, zero profit objective — belongs there rather than at the USD 1,000/0.01 LOT FORWARD TEST,
+since no strategy exists yet to forward-test. Completing D-008 does not graduate the project past LIVE
+OBSERVATION. **Still open:** the 4 open positions whose margin usage would make the harness reject every fire
+(account owner's decision — dedicated account vs. closing them), and risk/hostile verdicts re-run against the
+live plan specifically, since the existing ones covered the demo-only design.
 
 **Earlier the same day — the harness design (Stage C item, §3) was pulled forward and is now written:**
 `04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs

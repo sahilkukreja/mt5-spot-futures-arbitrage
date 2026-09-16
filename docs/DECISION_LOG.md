@@ -210,3 +210,7 @@ No further decisions recorded yet.
 - **Invalidation condition:** Stage 2's 10-pair live pilot shows fills cannot be reliably attributed to
   reference prices; or the Required Safety Margin methodology is revised so this measurement is no longer its
   input; or the account owner withdraws the budget.
+- **Evidence update (2026-09-16):** the phase-position blocker named in this decision's own risk list is
+  resolved by `docs/06_operations/PHASE_GRADUATION_CRITERIA.md` -- see that document and
+  `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 2. The account precondition (section 7 of that
+  document) remains open and is the account owner's decision.
