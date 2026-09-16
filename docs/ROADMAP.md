@@ -216,6 +216,18 @@ is a broker KYC step outside this project's tooling, and is the account owner's 
 **Still open:** the new account actually being opened and funded, and risk/hostile verdicts re-run against
 the live plan specifically, since the existing ones covered the demo-only design.
 
+**Update 2026-09-16 (later still) — Stage 0 built and verified, 12/12 PASS.**
+`measurement_harness/HarnessStage0_DryRun.mq5` implements the state machine, idempotency, journal, and restart
+reconciliation from `34_DEMO_TEST_PLAN.md` sections 5–8, exercising all 12 acceptance tests against an
+in-process simulated broker — no MT5 trading or account API call anywhere in the file, grep-verifiable. Four
+real runs by the account owner, three real bugs found and fixed via diagnosis rather than assumption at every
+step (a file-handle conflict, a wrong test design in T4, a journal-file-persists-across-attaches bug in T6),
+confirmed 12/12 on the fourth. Full account in `measurement_harness/README.md` → "Verification". **This is
+mechanical-correctness evidence only** — it proves the state machine, retry whitelist, and reconciliation
+logic behave correctly against scripted broker responses. It is not, and was never meant to be, evidence about
+real broker behaviour; that is what Stage 1 (demo) and Stages 2+ (live, D-008) still exist to measure, and
+both remain gated exactly as above — this closes Stage 0 only.
+
 **Earlier the same day — the harness design (Stage C item, §3) was pulled forward and is now written:**
 `04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs
 `/arb-risk-review` and `/arb-hostile-review` before any MQL5. Pulling it ahead of A4 is defensible because the

@@ -73,8 +73,20 @@ runtime flag that could be misconfigured or bypassed.
   - **Fixed:** `OnInit` now deletes the journal file before opening it, so every self-test run starts from a
     clean slate. This is correct only for this self-test harness, where each invocation must be an
     independent, repeatable pass — the eventual production harness must never do this, since a journal that
-    survives a real restart is the entire point of section 7's persistence contract. Recompiled clean
-    (0 errors). **Awaiting the account owner's next run to confirm 12/12.**
+    survives a real restart is the entire point of section 7's persistence contract.
+  - **Run 4 (after the fix): 12/12 PASS.** Confirmed by the account owner, 2026-09-16 23:12. Full Experts log
+    reviewed line by line, not just the summary count — every `[DIAG]` line is consistent with the intended
+    behaviour (e.g. `[DIAG T6] ... resumed_state=ORPHANED ... ledger_size=1` then a genuine second send, vs.
+    the earlier run's incorrect `HEDGED`/`ledger_size=1` combination). **Stage 0 is verified, not merely
+    compiled.**
+- Two more defects, unrelated to PASS/FAIL, were found and fixed while diagnosing T6 and cleaned up before
+  this final run: a leg-2 detection check in `StartupReconciling()` that matched a state name (`"HEDGED"`)
+  `ExecuteLeg()` never actually journals (silently masked by a working fallback check beside it, now made
+  consistent with leg 1's own check), and an unused `SetEvents()` helper, removed.
+- Two `Print("[DIAG ...]")` call sites remain in `RunPairAttempt()`, left in deliberately. They only fire
+  during the restart-path tests (T3, T4, T6, T9) and add real transparency about which branch was taken and
+  the send count at each step, at the cost of a few extra lines in an otherwise-clean 12/12 log. Remove them
+  if a future maintainer finds them noisy; nothing depends on their presence.
 
 ## How to run it
 

@@ -421,12 +421,17 @@ written until a fresh `/arb-risk-review` and `/arb-hostile-review` are recorded 
 specifically** (`35_1000_USD_LIVE_TEST_PLAN.md` §2) and D-008 is accepted. This exception authorizes exactly
 one file's existence and nothing about what it may be attached to or what its output may be used for.
 
-**Verification status, updated 2026-09-16:** the account owner ran it three times, real bugs found and fixed
-each round. Run 1: 8/12 (file-handle conflict in `StartupReconciling()`; a wrong test design in T4). Run 2,
-after fixing those: 11/12, one remaining failure (T6) diagnosed via targeted `Print()` output rather than a
-third guess — the journal file persists across separate EA attaches with no per-attach identifier, so a leg 2
-row written by an *earlier* attach's T6 was read back by the *current* attach as current, reconciling to
-`HEDGED` and skipping leg 2 entirely. Fixed by truncating the journal at the start of every self-test run —
-correct only for this self-test harness; the eventual production harness must never do this. Recompiled clean
-(0 errors), **awaiting the next run to confirm 12/12.** See `measurement_harness/README.md` → "Verification"
-for the full account.
+**Verification status, updated 2026-09-16: CONFIRMED, 12/12 PASS.** The account owner ran it four times, real
+bugs found and fixed each round rather than assumed away. Run 1: 8/12 (a file-handle conflict in
+`StartupReconciling()`; a wrong test design in T4). Run 2, after fixing those: 11/12, one remaining failure
+(T6) diagnosed via targeted `Print()` output rather than a third guess — the journal file persists across
+separate EA attaches with no per-attach identifier, so a leg 2 row written by an *earlier* attach's T6 was
+read back by the *current* attach as current, reconciling to `HEDGED` and skipping leg 2 entirely. Fixed by
+truncating the journal at the start of every self-test run — correct only for this self-test harness; the
+eventual production harness must never do this. Run 4: **12/12 PASS**, full Experts log reviewed line by
+line, not just the summary count. See `measurement_harness/README.md` → "Verification" for the full account,
+including two further defects (unrelated to PASS/FAIL) found and fixed along the way.
+
+**This closes Stage 0.** Stages 1/2 are unaffected by this and remain gated on what
+`35_1000_USD_LIVE_TEST_PLAN.md` section 2 already lists: the account precondition (not yet satisfied) and a
+fresh `/arb-risk-review` / `/arb-hostile-review` pass against the live plan specifically.
