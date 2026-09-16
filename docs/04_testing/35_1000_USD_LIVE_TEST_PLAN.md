@@ -168,7 +168,8 @@ Beyond the demo design's guards, all of which still apply:
 | `InpMaxCumulativeLossUsd` | **250** | 25% of capital. Latching. Caps the "slippage is USD 1/pair" scenario, which would otherwise reach USD 449 unremarked |
 | `InpMaxDailyLossUsd` | **40** | 4% of capital/day; forces the run across multiple sessions and limits single-day damage |
 | `InpMaxTradeLossUsd` | **15** *(new, condition C2)* | per-pair fail-safe. Round trip (~USD 0.50) + worst-case orphan exposure (~USD 4.85, from the orphan-timeout row below) + headroom for a single elevated-spread/slippage event, rounded up. Should almost never bind in normal operation — it exists to catch the single anomalous pair, not to be a routine limit. UNCALIBRATED like every other value here |
-| `InpMaxPairsPerDay` | **50** *(new, condition C2)* | closes a real gap: `InpMaxDailyLossUsd` bounds dollars/day but not *count*/day — if realized cost per pair runs unexpectedly low, a dollar-only cap would not stop an unexpectedly large number of fires in one session. 50/day still completes the full n=300 well within a week even if hit every day |
+| `InpMaxPairsPerDay` | **50** *(new, condition C2; rationale corrected per hostile review UA-1)* | a guard against a **scheduler bug** causing runaway fire attempts, independent of per-pair cost. The original rationale ("if realized cost per pair runs unexpectedly low") does not survive this project's own data — round-trip cost has a measured, near-fixed floor (commission USD 0.10 fixed + median spread USD 0.3975, spot's p99 equal to its median), so `InpMaxDailyLossUsd=40` already caps count near 80/day at the cheapest plausible cost. A count cap is still worth having because a scheduler defect (a loop, a timer misfire, a re-entrancy bug) could attempt far more fires than intended regardless of what each one costs, and a dollar cap only catches that *after* the money is spent. 50/day still completes the full n=300 well within a week |
+| Stage-gate file *(new, hostile review UA-3)* | `stage2_confirmed.flag`, written only by explicit operator sign-off | Stage 3/4's automated scheduler refuses to start unless this file exists. It is never written by the harness itself — only by the operator, after §8.1.4's exit criteria are met. This moves the staged protocol's sequencing guarantee from procedure into code: without it, a single input flag change (`InpStage2Mode=false`) could run the 290-pair automated schedule as the very first live action, bypassing Stage 2 entirely. Tested by T20 |
 | `InpMaxConsecutiveFailures` | 3 | legacy risk-control taxonomy |
 | `InpOrphanTimeoutMs` | **3,000** (was 30,000) | at max observed velocity 1.616 USD/sec, 30 s of unhedged exposure costs USD 48.48 — 4.85% of capital in one event. 3 s caps it near USD 4.85 |
 | `InpMinMarginLevelPct` | 300 | fail-safe; see §7 — **currently blocks every fire on this account** |
@@ -237,9 +238,10 @@ Stage 2 is where a live-only defect would surface; it is deliberately small and 
 
 **Status: planned, not authorized.** This section makes "supervised; fills, timestamps, both reference
 prices, clock offset all sane" concrete and checkable. It does not change the gate: Stage 2 still requires,
-in order, `/arb-hostile-review` re-run against this document, conditions C1–C6 from the 2026-09-16
-`/arb-risk-review` applied, D-008 accepted, the dedicated account opened and funded, and Stage 1 (20 demo
-pairs) completed with zero reconciliation mismatches. None of those are done yet.
+in order, D-008 accepted, the dedicated account opened and funded, and Stage 1 (20 demo pairs) completed
+with zero reconciliation mismatches. Both reviews are now done against this document — `/arb-risk-review`
+(`APPROVE WITH CONDITIONS`, C1–C6 applied) and `/arb-hostile-review` (`READY WITH CONDITIONS` for Stages 0–2
+only, FF-6/UA-1/UA-2/UA-3/AS-1 applied). The remaining three items are not done.
 
 ### 8.1.1 Design decisions specific to Stage 2
 
@@ -264,8 +266,10 @@ pairs) completed with zero reconciliation mismatches. None of those are done yet
 
 ### 8.1.2 Pre-flight checklist (all must be true before pair 1)
 
-- [ ] `/arb-hostile-review` verdict recorded against this document, and any conditions it adds are applied
-- [ ] Risk-review conditions C1–C6 applied to this document
+- [x] `/arb-hostile-review` verdict recorded against this document (`READY WITH CONDITIONS`, Stages 0–2 only,
+      2026-09-16), and its conditions applied (T17 corrected, T18–T20 added, L-9 added, `InpMaxPairsPerDay`
+      rationale corrected, stage-gate file added)
+- [x] Risk-review conditions C1–C6 applied to this document (2026-09-16)
 - [ ] D-008 accepted in `DECISION_LOG.md`
 - [ ] Dedicated account open, funded to USD 1,000, zero other positions, confirmed via a fresh
       `AccountInfoInteger`/`AccountInfoDouble` read immediately before starting
@@ -317,7 +321,10 @@ The table's "supervised; fills, timestamps, both reference prices, clock offset 
 
 **On success:** the 10-pair CSV and the operator's cross-check notes are retained as the record (not
 committed — account/ticket-identifying detail stays local, consistent with existing safeguards), and Stage 3
-requires its own go decision, not an automatic continuation.
+requires its own go decision, not an automatic continuation. **That go decision is expressed in code as the
+operator writing `stage2_confirmed.flag`** (§6, T20) — a deliberate manual action, never something the
+harness does for itself. Until that file exists, the Stage 3/4 scheduler will not start regardless of any
+input setting.
 
 **On failure:** return to design/Stage 0–1. Stage 3's 200-pair automated run does not begin from a Stage 2
 that needed a workaround to pass.
@@ -332,7 +339,10 @@ T1–T12 from `34_DEMO_TEST_PLAN.md` carry over unchanged. Added per hostile rev
 | **T14** | Clock-offset probe | server-vs-local offset measured at start and end; abort if drift exceeds a stated bound |
 | **T15** | Sampling-weight integrity | reweighted stratum A+B covariate distribution reproduces the population distribution measured from the 5,843,313-row dataset |
 | **T16** | Cumulative-loss stop | simulated losses trip `InpMaxCumulativeLossUsd` and latch; no further fires |
-| **T17** | Account whitelist | refuses to initialise against any account number other than the compiled-in one |
+| **T17** | Account whitelist *(corrected, hostile review FF-6)* | refuses to initialise against any account number other than the one **read from the gitignored runtime config**; and refuses to initialise at all if that config is absent or the whitelist entry is missing. **Explicitly fails if the account number appears anywhere in the compiled source** — grep the `.mq5` for it as part of the test. The original wording ("the compiled-in one") contradicted C4 and would have been satisfied by exactly the hardcoding C4 prohibits |
+| **T18** *(new, hostile review UA-2)* | Stage 2 mode suppresses automatic firing | with `InpStage2Mode=true`, zero fires occur over an extended idle period (at least one full scheduler interval × 10); exactly one fire occurs per explicit manual trigger; no fire occurs on timer, tick, or init |
+| **T19** *(new, hostile review AS-1 — analysis stage, not pre-trade)* | Slippage-vs-sequence trend | at Stage 5, regress `slippage_broker_i` on pair sequence number across the full run. A flat trend supports stable execution quality. A worsening trend is evidence of broker-side adaptation to this account's repetitive pattern and **must be reported as a limitation on every headline number, never averaged into one** |
+| **T20** *(new, hostile review UA-3)* | Stage-gate enforcement in code | Stage 3/4's automated scheduler refuses to run unless a persisted `stage2_confirmed.flag` exists; that file is written only by an explicit operator sign-off action after Stage 2's exit criteria (§8.1.4) are met, never by the harness itself. Test: delete the flag, attempt Stage 3 start, confirm refusal |
 
 ## 10. Risks
 
@@ -344,6 +354,7 @@ T1–T12 from `34_DEMO_TEST_PLAN.md` carry over unchanged. Added per hostile rev
 | L-4 | Margin interaction with unrelated positions | §7 — blocking precondition |
 | L-5 | Harness code reused as production execution | quarantine; separate directory; no shared module with `src/` |
 | L-6 | Results over-generalised from one broker, one pair, one contract, one regime | stated as a scope limit in the analysis, not discovered later |
+| L-9 *(new, hostile review AS-1)* | **The trial's own pattern is a detectable signature.** 300 small, near-identical hedged pairs from one account is exactly what a broker's last-look or behavioural-pricing logic could detect and adapt to — so the measured slippage could reflect *this account's treatment once flagged*, not general retail execution. Sharper than L-6: adaptation *during* the run, not just non-generalisation after it | T19 at analysis stage — regress `slippage_broker_i` on pair sequence number. A worsening trend is evidence of adaptation and is reported as a limitation on every headline number, never averaged away. No pre-trade mitigation exists; the design does not attempt to disguise the pattern, because doing so would itself bias what is being measured |
 | L-7 | Partial fills unmeasurable | `volume_min = volume_step = 0.01` and `filling_mode = FOK\|IOC` make `LEG1_PARTIAL` unreachable at this size. R-003's partial-fill branch stays unmeasured — the trial must not be reported as having validated it |
 | L-8 | No per-order slippage cap | `trade_exemode = 2` (market execution): deviation parameters are not honoured. Slippage can only be limited by pre-trade gating, never by the order itself |
 
@@ -375,8 +386,10 @@ budgeted at n=300 and USD 149.25 guaranteed cost, capped by a latching USD 250 c
 
 Authorizes nothing. Requires, in order: Phase graduation criteria written (§2, done) → account precondition
 resolved (§7, decided, not yet satisfied) → `/arb-risk-review` re-run (done 2026-09-16, `APPROVE WITH
-CONDITIONS` C1–C6, **applied to this document 2026-09-16**) → `/arb-hostile-review` re-run (not yet done) →
-D-008 accepted → `/arb-implement` Stage 0 only.
+CONDITIONS` C1–C6, applied) → `/arb-hostile-review` re-run (**done 2026-09-16, `READY WITH CONDITIONS` for
+Stages 0–2 only** — FF-6, UA-1, UA-2, UA-3, AS-1, all applied; **no verdict on Stage 3/4**, which requires
+its own review once Stage 2's results exist) → D-008 accepted (**the account owner's decision — now eligible,
+not yet made**) → `/arb-implement` Stage 0 only.
 
 **Stage 0 is separately verified** (`measurement_harness/HarnessStage0_DryRun.mq5`, 12/12 PASS, confirmed
 2026-09-16 — see `34_DEMO_TEST_PLAN.md`). That satisfies "Stage 0 only" above. **Stage 2 specifically** is

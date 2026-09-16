@@ -292,6 +292,15 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   unconditional.
 - **Owner:** the account owner, who funds it.
 - **Status:** open -- blocking on the Phase graduation criteria and the account precondition before any spend.
+- **Update 2026-09-16 (`/arb-hostile-review` AS-1) -- a second, sharper validity threat to this trial's
+  output.** The trial's own pattern -- 300 small, near-identical hedged pairs from one account -- is exactly
+  what a broker's last-look or behavioural-pricing logic could detect and adapt to. If that happens, the
+  measured slippage reflects *this account's treatment once flagged*, not general retail execution, and the
+  bias arises *during* the run rather than merely limiting generalisation afterward. No pre-trade mitigation
+  exists and none is attempted (disguising the pattern would itself bias the measurement). Mitigation is at
+  analysis: T19 regresses `slippage_broker_i` on pair sequence number; a worsening trend is reported as a
+  limitation on every headline number, never averaged away. Recorded as L-9 in
+  `35_1000_USD_LIVE_TEST_PLAN.md` section 10.
 
 ### R-009: D-008 live trial has gaps against the mandate's own required risk-limit checklist
 - **Raised:** 2026-09-16, from `/arb-risk-review` re-run against `04_testing/35_1000_USD_LIVE_TEST_PLAN.md`
@@ -332,9 +341,18 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   it is correctly *implemented* in code is still unverified and remains this entry's live concern until Stage
   1/2 code exists and is checked against it. `InpMaxTradeLossUsd`/`InpMaxPairsPerDay` (C2) and the
   slippage-cap non-existence statement (C3) are documented; both remain UNCALIBRATED starting values like
-  every other guard in the design, not approved production parameters. Still open pending
-  `/arb-hostile-review` re-run against the corrected document, and pending Stage 1/2 implementation actually
-  matching what is now specified. Originally: "open -- C1-C6 not yet applied to the document." Blocks Stage 2's
+  every other guard in the design, not approved production parameters. **`/arb-hostile-review` re-run
+  2026-09-16 against the corrected document: `READY WITH CONDITIONS` for Stages 0-2 only.** It found that
+  the C4 fix had been undone three sections later -- acceptance test T17 still read "the compiled-in
+  account number," so an implementer could satisfy the test by exactly the hardcoding C4 prohibits (FF-6).
+  Corrected: T17 now requires the value from the gitignored config and explicitly fails if the account
+  number appears anywhere in compiled source. Also added: T18 (Stage 2 manual mode provably suppresses
+  automatic firing), T20 (a persisted `stage2_confirmed.flag`, written only by operator sign-off, that the
+  Stage 3/4 scheduler refuses to run without -- sequencing enforced in code, not discipline), and a
+  corrected rationale for `InpMaxPairsPerDay` (a scheduler-bug guard, not a low-cost-per-pair guard, which
+  this project's own measured spread floor rules out). Still open pending Stage 1/2 implementation actually
+  matching what is now specified -- FF-6 is the reason that verification must include grepping the source
+  for the account number, not just running the tests. Originally: "open -- C1-C6 not yet applied to the document." Blocks Stage 2's
   own pre-flight checklist (`35_1000_USD_LIVE_TEST_PLAN.md` section 8.1.2), which already lists "risk-review
   conditions C1-C6 applied"
   as a precondition.

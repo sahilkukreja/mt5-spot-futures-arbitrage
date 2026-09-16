@@ -239,8 +239,17 @@ directly to mandate text rather than only to this project's own derivation).
 `35_1000_USD_LIVE_TEST_PLAN.md` §8.1 now specifies Stage 2 (the first live pilot, 10 pairs) as a concrete,
 checkable procedure — manual single-pair triggering, fixed zero dwell, a specific timing window that avoids
 the R-004 Friday-13:30-UTC anomaly, a per-pair verification checklist, and explicit stop-and-diagnose rules
-rather than a burst of 10 unattended fires. **Still not authorized** — `/arb-hostile-review` has not been
-re-run against the live plan, and that is the next gate, not Stage 2 execution.
+rather than a burst of 10 unattended fires.
+
+**Update 2026-09-16 (later still) — both reviews now complete against the live plan; D-008 eligible for
+acceptance.** Risk-review conditions C1–C6 applied. `/arb-hostile-review` re-run: `READY WITH CONDITIONS` for
+**Stages 0–2 only**, explicitly no verdict on Stage 3/4 until Stage 2's real results exist. Its most useful
+catch: the C4 credential fix had been silently undone by the acceptance test written to verify it — T17 still
+said "compiled-in," so hardcoding the account number would have passed the test. Corrected, plus three new
+tests (T18 manual-mode suppression, T19 slippage-vs-sequence trend, T20 stage-gate file) and one new risk
+(L-9, broker-side adaptation to the trial's own repetitive pattern). **What remains before the first live
+order, in order: D-008 accepted (the account owner's decision, now eligible), the dedicated account opened and
+funded, Stage 1 (20 demo pairs) run clean, then §8.1.2's pre-flight checklist.**
 
 **Earlier the same day — the harness design (Stage C item, §3) was pulled forward and is now written:**
 `04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs

@@ -218,3 +218,11 @@ No further decisions recorded yet.
   account (USD 1,000, no other positions), not the existing account's 4 open pairs. Opening and funding it is
   a broker step for the account owner and is not yet done; see `04_testing/35_1000_USD_LIVE_TEST_PLAN.md`
   section 7.
+- **Evidence update (2026-09-16, later still) -- both required reviews now complete; this decision is
+  eligible for acceptance.** `/arb-risk-review` against the live plan: `APPROVE WITH CONDITIONS` (C1-C6,
+  applied). `/arb-hostile-review` against the corrected live plan: `READY WITH CONDITIONS` for Stages 0-2
+  only (FF-6, UA-1, UA-2, UA-3, AS-1, applied), with no verdict on Stage 3/4 until Stage 2's results exist.
+  Stage 0 is separately verified 12/12. **Status remains `proposed`** -- accepting it is the account owner's
+  decision, since it commits USD 149.25 of real capital at a lower bound; nothing in this update makes that
+  decision on their behalf. Verdicts and applied conditions: `04_testing/35_1000_USD_LIVE_TEST_PLAN.md`
+  sections 6, 8.1, 9, 10, 12; `RISK_REGISTER.md` R-008 and R-009.
