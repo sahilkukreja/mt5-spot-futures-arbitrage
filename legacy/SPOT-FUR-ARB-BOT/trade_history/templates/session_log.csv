@@ -1,0 +1,2 @@
+pair_idx,open_time,close_time,hold_min,symbol1,symbol2,direction,lot,open_gap,oag_level,cag_level,close_gap,gap_compression,pl_s1,pl_s2,pl_total,close_reason,ea_version,notes
+1,2026-01-01T09:00:00Z,2026-01-01T09:45:00Z,45,GCM26.u,XAUUSD.u,SELL_ONLY,0.10,28.50,28.40,25.00,25.10,3.40,120.00,85.00,205.00,AUTOCLOSE,3.26,Example row — delete before use

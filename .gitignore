@@ -9,7 +9,6 @@ __MACOSX/
 # Do NOT commit until content is manually reviewed and promoted (sanitized)
 # into reference/legacy/SPOT-FUR-ARB-BOT/{source,configs,docs,samples}/.
 # See reference/legacy/SPOT-FUR-ARB-BOT/README.md for the review policy.
-/legacy/
 
 # Compiled MT5 binaries and local terminal artifacts
 *.ex5
