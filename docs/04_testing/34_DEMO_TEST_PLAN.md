@@ -421,9 +421,12 @@ written until a fresh `/arb-risk-review` and `/arb-hostile-review` are recorded 
 specifically** (`35_1000_USD_LIVE_TEST_PLAN.md` §2) and D-008 is accepted. This exception authorizes exactly
 one file's existence and nothing about what it may be attached to or what its output may be used for.
 
-**Verification status, updated 2026-09-16:** the account owner ran it. First run: **8/12 PASS, 4 FAIL**
-(T4, T6, T7, T8) — two real bugs, not flaky tests: a file-handle conflict in `StartupReconciling()` (closing
-its own write handle before reading fixes it, and is also more faithful to a real restart), and a test (T4)
-that pre-seeded the broker ledger before the simulated send happened, never actually exercising the
-ack-timeout-then-reconcile path it claimed to test. Both fixed, recompiled clean (0 errors), **awaiting
-re-run** to confirm 12/12. See `measurement_harness/README.md` → "Verification" for the full account.
+**Verification status, updated 2026-09-16:** the account owner ran it three times, real bugs found and fixed
+each round. Run 1: 8/12 (file-handle conflict in `StartupReconciling()`; a wrong test design in T4). Run 2,
+after fixing those: 11/12, one remaining failure (T6) diagnosed via targeted `Print()` output rather than a
+third guess — the journal file persists across separate EA attaches with no per-attach identifier, so a leg 2
+row written by an *earlier* attach's T6 was read back by the *current* attach as current, reconciling to
+`HEDGED` and skipping leg 2 entirely. Fixed by truncating the journal at the start of every self-test run —
+correct only for this self-test harness; the eventual production harness must never do this. Recompiled clean
+(0 errors), **awaiting the next run to confirm 12/12.** See `measurement_harness/README.md` → "Verification"
+for the full account.

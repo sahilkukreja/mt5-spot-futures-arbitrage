@@ -42,25 +42,39 @@ runtime flag that could be misconfigured or bypassed.
 
 - **Compiled successfully** with MetaEditor64 (`C:\Program Files\MetaTrader 5 IC Markets Global\MetaEditor64.exe
   /compile`), 0 errors, across four rounds.
-- **Executed end-to-end by the account owner, twice.** First real run: **8/12 PASS, 4 FAIL** (T4, T6, T7, T8).
-  Both failure clusters were real bugs, not flaky tests:
-  - **T6, T7, T8** — `StartupReconciling()` tried to open the journal file for reading while `OnInit`'s own
-    handle still held it open for writing; MQL5 returned `INVALID_HANDLE` for the second open regardless of
-    `FILE_SHARE_READ` on both sides, producing the misleading "no journal file" note on a file that
-    demonstrably existed. Fixed by having `StartupReconciling()` close the write handle before reading and
-    reopen it afterward — which is also more faithful to what it's testing, since a real restart holds no
-    handle to begin with.
-  - **T4** — the test itself was wrong, not the harness: it pre-seeded the simulated broker ledger *before*
-    calling the scenario, so the top-of-loop idempotency check (meant for post-restart resumption) adopted the
-    fill without any send ever happening, which doesn't exercise the ack-timeout-then-reconcile path the test
-    claims to cover. Fixed by attaching the fill to the `SIM_ACK_TIMEOUT` event itself, so it only becomes
-    visible to the ledger as a side effect of processing that specific attempt's result — strictly after the
-    send has already happened and been counted.
-  - Fixes committed, recompiled clean (0 errors), **not yet re-run** — the account owner's second confirmed
-    run should show 12/12 PASS; if it doesn't, that's a new, real finding and should be reported rather than
-    assumed away.
-- Nothing here was fixed by weakening an assertion. Both fixes made the corresponding test *more* strict about
+- **Executed end-to-end by the account owner, three times.** Real bugs found and fixed at every stage —
+  nothing here was fixed by weakening an assertion; every fix made the corresponding test *more* strict about
   the invariant it claims to prove, not less.
+  - **Run 1: 8/12 PASS, 4 FAIL** (T4, T6, T7, T8).
+    - T6/T7/T8 failed with a misleading "no journal file" note on a file that demonstrably existed —
+      `StartupReconciling()` tried to open the journal for reading while `OnInit`'s own handle still held it
+      open for writing, and MQL5 returned `INVALID_HANDLE` for the second open regardless of
+      `FILE_SHARE_READ` on both sides. Fixed by having `StartupReconciling()` close the write handle before
+      reading and reopen it afterward.
+    - T4 failed because the *test* was wrong, not the harness: it pre-seeded the simulated broker ledger
+      *before* calling the scenario, so the top-of-loop idempotency check (meant for post-restart resumption)
+      adopted the fill without any send ever happening — never exercising the ack-timeout-then-reconcile path
+      it claimed to cover. Fixed by attaching the fill to the `SIM_ACK_TIMEOUT` event itself, so it only
+      becomes visible to the ledger as a side effect of processing that specific attempt's result.
+  - **Run 2 (after the above fixes): 11/12 PASS, 1 FAIL** (T6 only — `sends=1 (expect 2) outcome=COMPLETED`).
+    T4/T7/T8 confirmed fixed. T6's failure signature (a "successful" outcome with a missing send) was
+    ambiguous enough that a from-source guess risked being wrong in a third, different way, so a pure-logic
+    port of the algorithm to Python was traced by hand first — it came out correct, meaning the bug was
+    something MQL5-specific the port didn't capture, not a flaw in the algorithm. Diagnostic `Print()`
+    statements were added at the two points that could distinguish the remaining hypotheses, rather than
+    guessing again.
+  - **Diagnosis, from the account owner's third run's `[DIAG T6]` output:** `resumed_state=HEDGED,
+    ledger_size=1`. Ledger size 1 means only leg 1 had ever been sent — yet reconciliation concluded leg 2
+    was already filled, from the *journal file*, not the ledger. Root cause: the journal is opened
+    `FILE_READ|FILE_WRITE` (append-preserving — required within one run, since T6/T7 simulate a restart by
+    reading it back mid-run), but it is **never cleared between separate EA attaches**, and every run reuses
+    the same `run_id` strings ("T1".."T12"). A leg 2 row written by an *earlier* attach's T6 stayed in the
+    file and got read back by the *current* attach's `StartupReconciling("T6", 1)` as if it were current.
+  - **Fixed:** `OnInit` now deletes the journal file before opening it, so every self-test run starts from a
+    clean slate. This is correct only for this self-test harness, where each invocation must be an
+    independent, repeatable pass — the eventual production harness must never do this, since a journal that
+    survives a real restart is the entire point of section 7's persistence contract. Recompiled clean
+    (0 errors). **Awaiting the account owner's next run to confirm 12/12.**
 
 ## How to run it
 

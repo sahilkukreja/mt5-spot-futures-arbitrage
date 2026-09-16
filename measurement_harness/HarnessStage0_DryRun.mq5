@@ -929,6 +929,25 @@ int OnInit()
    Print("docs/04_testing/34_DEMO_TEST_PLAN.md section 10.");
    Print("=====================================================================");
 
+   // Start every self-test run from a clean journal. This file is
+   // opened FILE_READ|FILE_WRITE (append-preserving) because T6/T7 need
+   // that semantics WITHIN one run -- but every run reuses the same
+   // run_id strings ("T1".."T12"), and MQL5 does not truncate the file
+   // between separate EA attaches. Left alone, a leg2 row written by a
+   // PREVIOUS attach's T6 stays in the file forever, and the CURRENT
+   // attach's StartupReconciling("T6", 1) reads it back as if it were
+   // current -- reconciling to HEDGED and skipping leg2 entirely. This
+   // is exactly what happened: diagnosed via [DIAG T6] showing
+   // resumed_state=HEDGED with ledger_size=1 (only leg1 in the ledger,
+   // proving leg2 was never actually sent THIS run).
+   //
+   // This is correct ONLY for this self-test harness, where every
+   // invocation must be an independent, repeatable verification pass.
+   // The PRODUCTION harness (Stage 1/2, not yet written) must NEVER do
+   // this -- its journal existing across a real restart is the entire
+   // point of section 7's persistence contract.
+   FileDelete(JOURNAL_FILE);
+
    if(!JournalOpenForAppend())
       return(INIT_FAILED);
 
