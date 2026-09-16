@@ -228,6 +228,20 @@ logic behave correctly against scripted broker responses. It is not, and was nev
 real broker behaviour; that is what Stage 1 (demo) and Stages 2+ (live, D-008) still exist to measure, and
 both remain gated exactly as above — this closes Stage 0 only.
 
+**Update 2026-09-16 (later still) — risk review re-run against the live plan; Stage 2 planned in detail.**
+`/arb-risk-review` returned `APPROVE WITH CONDITIONS` (C1–C6, not yet applied — see `RISK_REGISTER.md` and
+`35_1000_USD_LIVE_TEST_PLAN.md` §12). One notable finding: the mandate's own "INITIAL LIVE TEST PHASE" section
+describes D-008 almost verbatim, which materially strengthens the phase-position argument in
+`06_operations/PHASE_GRADUATION_CRITERIA.md` — but also surfaces a real gap, that the mandate's "P95 slippage"
+live-test success criterion cannot be fully answered at this budget (already known via R-008/§3.1, now tied
+directly to mandate text rather than only to this project's own derivation).
+
+`35_1000_USD_LIVE_TEST_PLAN.md` §8.1 now specifies Stage 2 (the first live pilot, 10 pairs) as a concrete,
+checkable procedure — manual single-pair triggering, fixed zero dwell, a specific timing window that avoids
+the R-004 Friday-13:30-UTC anomaly, a per-pair verification checklist, and explicit stop-and-diagnose rules
+rather than a burst of 10 unattended fires. **Still not authorized** — `/arb-hostile-review` has not been
+re-run against the live plan, and that is the next gate, not Stage 2 execution.
+
 **Earlier the same day — the harness design (Stage C item, §3) was pulled forward and is now written:**
 `04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs
 `/arb-risk-review` and `/arb-hostile-review` before any MQL5. Pulling it ahead of A4 is defensible because the

@@ -293,6 +293,44 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
 - **Owner:** the account owner, who funds it.
 - **Status:** open -- blocking on the Phase graduation criteria and the account precondition before any spend.
 
+### R-009: D-008 live trial has gaps against the mandate's own required risk-limit checklist
+- **Raised:** 2026-09-16, from `/arb-risk-review` re-run against `04_testing/35_1000_USD_LIVE_TEST_PLAN.md`
+  specifically (the prior verdict covered the demo-only design and did not carry over to live capital).
+- **Cause:** `PROJECT_MANDATE.md` -> "INITIAL RISK LIMITS" lists fourteen numeric limits required before live
+  testing. Cross-checked item by item against `35_1000_USD_LIVE_TEST_PLAN.md` section 6: most are present
+  (concurrency=1, orphan timeout 3s, margin level 300%, spread circuit breaker, daily loss cap USD 40). Four
+  are missing or structurally absent:
+  - no explicit per-pair (`InpMaxTradeLossUsd`) or per-day count (`InpMaxPairsPerDay`) limit -- only a
+    dollar-based daily cap exists, which does not bound trade *count* if individual pairs are cheap;
+  - no explicit weekly loss limit (redundant in practice with the daily/cumulative caps, but the mandate
+    names it explicitly);
+  - **no per-order slippage cap is possible at all** -- `trade_exemode=2` (market execution) does not honour
+    a deviation parameter (already flagged as L-8 in the design document itself).
+  - Separately: section 6 says the account whitelist value is "compiled in," which conflicts with section 7's
+    own rule that credentials never appear in a committed file -- if genuinely hardcoded, the account number
+    would enter git history the moment `measurement_harness/` is committed.
+- **Consequence:** a spend decision proceeding without these explicit, or without an explicit documented
+  reason one cannot exist (slippage cap), leaves a real gap against the mandate's own pre-live checklist,
+  even though the *existing* controls already bound worst-case loss fairly tightly in practice via the
+  cumulative/daily caps and the orphan timeout.
+- **Severity:** medium -- none of the four gaps are currently exploitable in a way that bypasses the USD 250
+  cumulative stop, but the account-whitelist conflict (if actually implemented as a literal) is a real
+  credential-handling violation, not just a documentation gap.
+- **Mitigation:** six conditions recorded against `35_1000_USD_LIVE_TEST_PLAN.md` (C1-C6): add explicit
+  per-pair and per-day-count limits (C2); document why no slippage cap is possible rather than leaving it
+  implicit (C3); source the account whitelist from the same gitignored runtime config as connection
+  credentials, never a source-level constant (C4); correct the stratum-B cost estimate (C5); record explicitly
+  that the mandate's "P95 slippage" live-test success criterion cannot be fully answered at this budget (C1);
+  restate that this approval covers the D-008 harness only, not any future production execution engine (C6).
+  Full detail: `35_1000_USD_LIVE_TEST_PLAN.md` section 8.1 (Stage 2 procedure) and the 2026-09-16
+  `/arb-risk-review` verdict.
+- **Trigger/metric:** whether C1-C6 are applied to the document before Stage 2's pre-flight checklist runs;
+  whether the account whitelist is verified as config-sourced, not hardcoded, before any live order.
+- **Owner:** whoever implements Stage 1/2 code.
+- **Status:** open -- C1-C6 not yet applied to the document. Blocks Stage 2's own pre-flight checklist
+  (`35_1000_USD_LIVE_TEST_PLAN.md` section 8.1.2), which already lists "risk-review conditions C1-C6 applied"
+  as a precondition.
+
 ---
 
 No further risks recorded yet.

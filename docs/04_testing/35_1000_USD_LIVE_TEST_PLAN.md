@@ -200,6 +200,95 @@ Each stage gated on the previous. **Stages 0–1 involve no live capital.**
 
 Stage 2 is where a live-only defect would surface; it is deliberately small and supervised.
 
+## 8.1 Stage 2 — operational procedure (planned 2026-09-16, not yet executable)
+
+**Status: planned, not authorized.** This section makes "supervised; fills, timestamps, both reference
+prices, clock offset all sane" concrete and checkable. It does not change the gate: Stage 2 still requires,
+in order, `/arb-hostile-review` re-run against this document, conditions C1–C6 from the 2026-09-16
+`/arb-risk-review` applied, D-008 accepted, the dedicated account opened and funded, and Stage 1 (20 demo
+pairs) completed with zero reconciliation mismatches. None of those are done yet.
+
+### 8.1.1 Design decisions specific to Stage 2
+
+- **Manual, single-pair triggering — not the Stage 3/4 randomised scheduler.** Stage 2 exists to catch a
+  live-only defect before committing to 300 automated pairs. That requires a human to verify each pair before
+  the next one fires. Concretely: `InpStage2Mode=true` disables the timer-based scheduler entirely; each pair
+  fires only on an explicit operator action (a chart button click or a manually re-applied input), never on a
+  timer. This is slower than the production design and that is the point.
+- **Fixed minimal dwell, `InpDwellMs=0` for all 10 pairs.** Dwell-time variation (D-H4) is Stage 3/4's
+  question. Stage 2 is validating the mechanism, not sampling behaviour across conditions — holding dwell
+  constant removes one variable from what's already a small, noisy sample.
+- **Scheduled for a specific, unremarkable window.** Not Friday, and not within roughly an hour of 13:30 UTC
+  — R-004's two documented anomalies both cluster there, and Stage 2's job is to validate normal operation,
+  not stress-test into a known irregular window on the very first live run. Not within the session's first or
+  last 15 minutes either (thinner liquidity, wider typical spread). Recommended: a London/NY-overlap weekday
+  session, well clear of both boundaries.
+- **Credentials and the account whitelist (C4) are load-bearing here, not just a documentation note.** Stage 2
+  is the first time any of this runs against a real account number. The connection details and the whitelist
+  value must both come from the same local, gitignored runtime config — never a literal in the committed
+  `.mq5` source. This must be verified as actually implemented (not just documented) before Stage 2 begins;
+  it is the one condition from the risk review that a document edit alone cannot satisfy.
+
+### 8.1.2 Pre-flight checklist (all must be true before pair 1)
+
+- [ ] `/arb-hostile-review` verdict recorded against this document, and any conditions it adds are applied
+- [ ] Risk-review conditions C1–C6 applied to this document
+- [ ] D-008 accepted in `DECISION_LOG.md`
+- [ ] Dedicated account open, funded to USD 1,000, zero other positions, confirmed via a fresh
+      `AccountInfoInteger`/`AccountInfoDouble` read immediately before starting
+- [ ] Stage 1 (20 demo pairs) completed, zero reconciliation mismatches, its slippage/rejection output
+      explicitly discarded (not treated as evidence)
+- [ ] `HarnessStage0_DryRun.mq5`'s successor Stage 1/2 code compiled from the exact reviewed commit, 0 errors
+- [ ] Account whitelist and credentials confirmed loaded from the gitignored runtime config, not source
+- [ ] Current session/time checked against 8.1.1's window guidance (not Friday, not near 13:30 UTC, not near
+      a session boundary, not within 14 days of the 25 Nov 2026 expiry hard stop)
+- [ ] Operator present and able to watch the run continuously — Stage 2 is not a "start and walk away" stage
+
+### 8.1.3 Per-pair procedure (repeated 10 times, one at a time)
+
+1. Operator triggers one pair manually.
+2. Operator notes, independently of the EA, the quoted bid/ask for both legs at that moment (a screenshot or
+   manual note in the terminal — a second, human-sourced data point to cross-check the EA's own recorded
+   reference prices against).
+3. Pair runs to completion (`CLOSED` or `CLOSED_ORPHAN`) or hits a timeout/guard.
+4. **Before triggering the next pair**, operator verifies for this pair:
+   - fill prices in the EA's CSV row are within a plausible band of the independently-noted quote (not
+     wildly off — a sanity check, not a formal statistical test at n=1);
+   - `t_fill` used `DEAL_TIME_MSC` (millisecond-resolution, not the 1-second `DEAL_TIME`) — check directly
+     against the terminal's own Trade History for that ticket;
+   - `clock_offset_ms` is small and stable, not drifting between this pair and the last;
+   - the retcode was one of the expected/whitelisted values, not something new and unhandled;
+   - the terminal's own Trade History/Journal tab for this ticket agrees with the EA's journal row — an
+     independent cross-check, not just trusting the EA's own bookkeeping;
+   - no kill switch trip, no `RECONCILIATION_REQUIRED`, no unexpected `ORPHANED`.
+5. If any check fails: **stop. Do not trigger pair 6 through 10.** Diagnose first, exactly as Stage 0's three
+   real bugs were diagnosed from evidence rather than guessed at. A failure at pair 3 is a more valuable,
+   cheaper finding than the same failure discovered at pair 47.
+6. If all checks pass: proceed to the next pair.
+
+### 8.1.4 Exit criteria, made concrete
+
+The table's "supervised; fills, timestamps, both reference prices, clock offset all sane" means, checkably:
+
+- 10/10 pairs reach a terminal state (`CLOSED` or `CLOSED_ORPHAN`) — no pair left hanging.
+- 0 kill-switch trips, 0 `RECONCILIATION_REQUIRED` states.
+- 0 `DEAL_TIME` (second-resolution) rows where `DEAL_TIME_MSC` should have been used — T13's check, now
+  against real data instead of a scripted result.
+- `clock_offset_ms` stays within a stated bound across all 10 pairs (not drifting) — T14's check, against
+  real data.
+- Every fill price is within a small, stated multiple of the independently-noted quote from step 2 above —
+  the first real evidence, however small, of whether `ref_at_send`/`fill` attribution (FF-4) behaves as
+  designed against a real broker.
+- Total realized cost is consistent with the ≈USD 5 estimate, not wildly over — if it isn't, that's itself a
+  finding worth understanding before committing to 200 more pairs at Stage 3.
+
+**On success:** the 10-pair CSV and the operator's cross-check notes are retained as the record (not
+committed — account/ticket-identifying detail stays local, consistent with existing safeguards), and Stage 3
+requires its own go decision, not an automatic continuation.
+
+**On failure:** return to design/Stage 0–1. Stage 3's 200-pair automated run does not begin from a Stage 2
+that needed a workaround to pass.
+
 ## 9. Acceptance tests
 
 T1–T12 from `34_DEMO_TEST_PLAN.md` carry over unchanged. Added per hostile review:
@@ -245,6 +334,13 @@ budgeted at n=300 and USD 149.25 guaranteed cost, capped by a latching USD 250 c
 
 ## 12. Gate status
 
-Authorizes nothing. Requires, in order: Phase graduation criteria written (§2) → account precondition
-resolved (§7) → `/arb-risk-review` re-run → `/arb-hostile-review` re-run → D-008 accepted → `/arb-implement`
-Stage 0 only.
+Authorizes nothing. Requires, in order: Phase graduation criteria written (§2, done) → account precondition
+resolved (§7, decided, not yet satisfied) → `/arb-risk-review` re-run (done 2026-09-16, `APPROVE WITH
+CONDITIONS` C1–C6, not yet applied) → `/arb-hostile-review` re-run (not yet done) → D-008 accepted →
+`/arb-implement` Stage 0 only.
+
+**Stage 0 is separately verified** (`measurement_harness/HarnessStage0_DryRun.mq5`, 12/12 PASS, confirmed
+2026-09-16 — see `34_DEMO_TEST_PLAN.md`). That satisfies "Stage 0 only" above. **Stage 2 specifically** is
+additionally gated on §8.1's pre-flight checklist, which restates and extends the items above with Stage
+2-specific items (account funding confirmed live, credential/whitelist implementation verified, timing
+window checked). Nothing beyond Stage 0 is authorized by anything in this document as it stands.
