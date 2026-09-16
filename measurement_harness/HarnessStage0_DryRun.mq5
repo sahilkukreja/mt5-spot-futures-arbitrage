@@ -632,6 +632,9 @@ ENUM_OUTCOME RunPairAttempt(const string run_id, int pair_seq, PairScenario &sc)
          return OUTCOME_HALTED;
         }
       state = rr.resumed_state; // must be LEG1_FILLED-equivalent exposure, i.e. ORPHANED pre-leg2
+      Print("[DIAG ", run_id, "] StartupReconciling returned ok=", rr.ok,
+            " resumed_state=", StateName(state), " note='", rr.note, "'",
+            " ledger_size=", ArraySize(g_ledger_key));
       if(state != STATE_ORPHANED && state != STATE_HEDGED)
         {
          Print("RESTART TEST FAILURE: expected exposure state after restart, got ", StateName(state));
@@ -639,6 +642,7 @@ ENUM_OUTCOME RunPairAttempt(const string run_id, int pair_seq, PairScenario &sc)
         }
       if(state == STATE_HEDGED)
         {
+         Print("[DIAG ", run_id, "] taking HEDGED early-return branch -- leg2 will NOT be called");
          // T7: restart happened after leg2 also filled in a prior pass.
          state = STATE_UNWINDING;
          state = STATE_CLOSED;
@@ -649,8 +653,13 @@ ENUM_OUTCOME RunPairAttempt(const string run_id, int pair_seq, PairScenario &sc)
       state = STATE_LEG1_FILLED;
      }
 
+   Print("[DIAG ", run_id, "] about to call leg2 ExecuteLeg. g_distinct_sends=", g_distinct_sends,
+         " leg2 key would be=", MakeIdemKey(run_id, pair_seq, 2, 1),
+         " already_in_ledger=", BrokerHasKey(MakeIdemKey(run_id, pair_seq, 2, 1)));
    state = STATE_LEG2_SUBMITTED;
    ENUM_LEG_RESULT r2 = ExecuteLeg(run_id, pair_seq, 2, "GC-Z26", "SELL", 0.01, sc.leg2_events, leg2_price);
+   Print("[DIAG ", run_id, "] leg2 ExecuteLeg returned r2=", (r2==LEG_FILLED?"FILLED":"NOT_FILLED"),
+         " g_distinct_sends now=", g_distinct_sends);
 
    if(r2 == LEG_FILLED)
      {
