@@ -384,6 +384,38 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
 - **Owner:** the account owner, who made this decision.
 - **Status:** open -- accepted risk, by explicit, reaffirmed decision. Not a design defect to be fixed; a
   documented trade-off to be honoured (elevated pair-1 scrutiny must actually be followed, not skipped too).
+- **Realized, 2026-09-17 -- this is what the accepted risk looked like in practice.** Pair 1's real run:
+  both legs opened correctly (idempotency, retcode handling, deal confirmation all worked first try,
+  `HEDGED` reached), then `CloseLegByTicket()` failed on both legs (err=4753) because `ExecuteLeg()` had
+  returned the *deal* ticket where `PositionSelectByTicket()` needed the *position* ticket -- these differ
+  in Hedge mode, which this account uses. The kill switch latched correctly rather than retrying blindly
+  into a failing close path; both positions were closed manually by the account owner. No unhedged
+  directional exposure occurred at any point -- both legs stayed open and mutually offsetting throughout.
+  Fixed: position ticket now read via `DEAL_POSITION_ID`, MT5's documented mechanism for this, correct in
+  both Hedge and Netting modes. This is exactly the class of defect Stage 1 would have caught for free; it
+  was instead caught at pair 1, with real capital briefly exposed to a close-path bug rather than an
+  open-path one. Full account: `measurement_harness/README.md` -> "What Stage 2 is" -> "First real run".
+
+### R-011: HarnessStage2_LivePilot.mq5's realized P&L tracking is not implemented
+- **Raised:** 2026-09-17
+- **Cause:** `InpMaxDailyLossUsd`/`InpMaxCumulativeLossUsd` are enforced only at the pre-trade budget-check
+  stage (`GuardBudgets()`), using the worst-case `InpMaxTradeLossUsd` estimate for every pair regardless of
+  what it actually costs. Actual realized profit/loss, summed from `HistoryDealGetDouble(..., DEAL_PROFIT)`
+  across all four legs of a closed pair, is never computed or fed back into the running totals. Flagged
+  explicitly in the code at the exact line it matters (`RunOnePair()`, search "realized_loss left at 0").
+- **Consequence:** the daily/cumulative loss guards are real and fail-safe against the *worst-case estimate*,
+  but do not tighten or loosen based on what has *actually* happened. A run of pairs that each lose close to
+  `InpMaxTradeLossUsd` would correctly trip the daily cap after roughly `InpMaxDailyLossUsd /
+  InpMaxTradeLossUsd` pairs -- but a run of profitable or breakeven pairs consumes budget headroom it never
+  actually used, and a pair that loses *more* than the worst-case estimate (should the estimate itself prove
+  wrong) would not be caught by these guards at all.
+- **Severity:** medium -- the guards remain fail-safe in the sense that mattered for pair 1 (they never
+  *permit* more than the config allows), but they are a cruder instrument than "realized P&L" implies.
+- **Mitigation:** do not raise `InpMaxPairs` beyond a small, manually-supervised number until this is closed.
+  Documented as a known gap in `measurement_harness/README.md` rather than left to be discovered.
+- **Trigger/metric:** any request to run more than a handful of pairs unattended.
+- **Owner:** whoever next touches `HarnessStage2_LivePilot.mq5`.
+- **Status:** open.
 
 ---
 

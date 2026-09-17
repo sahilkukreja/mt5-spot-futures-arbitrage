@@ -21,7 +21,7 @@ needs a full, reviewed design first.
 | File | Stage | Status |
 |---|---|---|
 | `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | **Verified.** 12/12 PASS, confirmed by real execution, 2026-09-16. |
-| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | Compiles clean (MetaEditor64, 0 errors, 2026-09-17). **Never run.** Places real orders. See "What Stage 2 is" below before touching it. |
+| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Run once, 2026-09-17: real bug found and fixed** (close path used the wrong ticket type in Hedge mode — see "First real run" below). Recompiled clean. **Not yet re-run.** Places real orders. |
 
 Stage 1 (demo shakedown) was skipped by explicit account-owner decision — see `RISK_REGISTER.md` R-010 and
 `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 8. No Stage 1 file exists or will.
@@ -127,12 +127,13 @@ against actual broker history, `PositionsTotal`/`PositionSelectByTicket` for sta
 `InpMaxPairs` defaults to **1**. Raise it only after that first pair has been fully verified against every
 item in section 8.1.3's checklist.
 
-**Compiled clean. Never run.** Stage 0 needed four real runs and three real bug fixes before it was
-trustworthy, and that was against a fully scripted, deterministic simulated broker with zero real-world
-variance. This file has faced neither a simulated nor a real broker yet. A clean compile is not evidence it
-works — it is evidence it has no *syntax* defects. Pair 1's elevated-scrutiny procedure in the design doc
-exists specifically because of this gap: Stage 1 (the demo shakedown that would normally have absorbed this
-risk for zero cost) was skipped by explicit account-owner decision (`RISK_REGISTER.md` R-010), so pair 1 is
+**Run once, real bug found and fixed. Not yet re-run since the fix.** See "First real run" below for the
+full account. Stage 0 needed four real runs and three real bug fixes before it was trustworthy, against a
+fully scripted, deterministic simulated broker with zero real-world variance — this file's very first real
+run against an actual broker found a real bug just as fast, which is exactly why a clean compile was never
+treated as evidence it works. Pair 1's elevated-scrutiny procedure in the design doc exists specifically
+because of this gap: Stage 1 (the demo shakedown that would normally have absorbed this risk for zero cost)
+was skipped by explicit account-owner decision (`RISK_REGISTER.md` R-010), so pair 1 is
 the very first contact any of this project's code has had with a real MT5 API.
 
 ### Setup required before this file can run at all
@@ -149,6 +150,30 @@ the very first contact any of this project's code has had with a real MT5 API.
    *unrelated* positions.
 3. **Read `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 8.1.2's full pre-flight checklist** before
    attaching this EA to a chart. It is not optional reading.
+
+### First real run, 2026-09-17 — a real bug found, exactly as expected
+
+Pair 1 fired against the live account. Both legs **opened correctly** — idempotency key construction,
+retcode handling, and deal confirmation via `HistoryDealSelect` all worked on the first real attempt, and
+`HEDGED` was reached correctly. Then `CloseLegByTicket()` failed on **both** legs (`err=4753`).
+
+**Root cause:** `ExecuteLeg()` returned `result.deal` (the deal ticket) as the ticket to close by, but
+`PositionSelectByTicket()` needs the *position* ticket. These are not the same value in Hedge mode, which
+this account uses — they can coincide in Netting mode, which is presumably where the original assumption
+came from. The kill switch latched correctly rather than retrying blindly into a failing close path; both
+positions were closed manually by the account owner. **No unhedged directional exposure occurred at any
+point** — both legs stayed open and mutually offsetting the entire time the bug was active.
+
+**Fixed:** the position ticket is now read via `DEAL_POSITION_ID`, MT5's documented mechanism for resolving
+a deal to its position, correct in both Hedge and Netting modes — not inferred or assumed. Recompiled clean
+(0 errors). **Not yet re-run.** See `docs/RISK_REGISTER.md` R-010's realized-risk update for the full
+account, and R-011 for a related, separately-tracked gap (realized P&L isn't summed yet, so loss guards work
+from a worst-case estimate, not actuals).
+
+This is exactly the outcome the design predicted: a real-API defect, found at pair 1 because Stage 1 was
+skipped, caught by the kill switch rather than causing silent damage, costing a manual intervention rather
+than money. Treat whatever fires next as **pair 1 again**, not pair 2 — the elevated pair-1 scrutiny in
+`docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §8.1.3 was not yet exercised against a successful close.
 
 ### What is intentionally not yet implemented
 
