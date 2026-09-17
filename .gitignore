@@ -19,6 +19,13 @@ __MACOSX/
 # never source of truth (see measurement_harness/README.md)
 measurement_harness/*.csv
 measurement_harness/*.log
+measurement_harness/*.txt
+
+# The account whitelist config must never live in the git working tree at
+# all (see measurement_harness/README.md "Setup required" -- it belongs
+# only in the terminal's own MQL5/Files/ sandbox). Named explicitly, not
+# just caught by the *.txt rule above, in case that rule is ever narrowed.
+measurement_harness/stage2_live_config.txt
 
 # Broker/account exports and reports (contain the account number in the
 # filename itself, plus the account holder's full real name and broker
