@@ -444,11 +444,20 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   closed pair. This is new code exercising new paths (`GetDealPnL`, the fixed `LEG_PARTIAL` branch,
   `RecordRealizedPnL`) that pair 1's two real runs never touched. Do not treat the self-test PASS as evidence
   this half works, per this project's own standing rule.
-- **Trigger/metric:** the next real pair's `PAIR_SUMMARY_FILE` row and Experts log realized-P&L line should
-  be cross-checked against the terminal's own Trade History, same standard as every other real run.
-- **Owner:** whoever runs the next pair.
-- **Status:** fixed; pure logic verified (self-test, 12/12 PASS, 2026-09-17); real-API integration still
-  unverified against real execution.
+- **Resolved, 2026-09-17 18:40 -- pair 2, first real exercise of the fix.** With `InpMaxPairs` raised to 2,
+  pair 2 fired and completed (`GC-Z26` SELL / `XAUUSD.vx` BUY, both legs closed with `retcode=10009 DONE`).
+  `GetDealPnL()` summed all four legs' realized components via `HistoryDealSelect` for the first time against
+  a real broker: **realized P&L = -$0.61.** `RecordRealizedPnL()` correctly accumulated the full amount into
+  both `g_daily_loss_usd` and `g_cumulative_loss_usd` (Experts log confirms `$0.61/40.0` and `$0.61/250.0`),
+  and `arb_harness_stage2_pairs.csv` recorded the row with `pnl_status=confirmed`. Both halves of this fix
+  are now verified: the pure loss-only arithmetic (self-test, 12/12 PASS) and the real-API wiring around it
+  (this run). Full account: `measurement_harness/README.md` -> "Third real run".
+- **Trigger/metric, still open:** an independent cross-check of this pair's P&L against the terminal's own
+  Trade History has not yet been confirmed back. Worth doing once, not because the mechanism is in doubt, but
+  as the same standard applied to every other real run here.
+- **Owner:** whoever does that cross-check.
+- **Status:** fixed and verified -- pure logic (self-test, 12/12 PASS) and real-API integration (pair 2,
+  2026-09-17) both confirmed by real execution.
 
 ### R-012: Budget guards are per-terminal state, not a true global cap, if run from more than one place
 - **Raised:** 2026-09-17, prompted by the account owner standardizing on a VPS (Administrator user, terminal

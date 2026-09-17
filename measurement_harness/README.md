@@ -21,7 +21,7 @@ needs a full, reviewed design first.
 | File | Stage | Status |
 |---|---|---|
 | `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | **Verified.** 12/12 PASS, confirmed by real execution, 2026-09-16. |
-| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pair 1 completed successfully, 2026-09-17**, after one real bug found and fixed on the prior attempt (close path used the wrong ticket type in Hedge mode). `InpMaxPairs` still 1 — see "Second real run" below before raising it. Places real orders. |
+| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pairs 1 and 2 both completed successfully, 2026-09-17.** Pair 2 also verified the R-011 realized-P&L fix against a real broker (-$0.61, correctly accumulated). `InpMaxPairs` now 2 — see "Third real run" below before raising it further. Places real orders. |
 | `HarnessStage2_Guards.mqh` | Stage 2 — pure decision logic | **Verified.** 12/12 PASS via `HarnessStage2_SelfTest.mq5`, confirmed by real execution, 2026-09-17. No broker/account API call anywhere in it (checkable by grep). |
 | `HarnessStage2_SelfTest.mq5` | Stage 2 — guard self-test | **Verified.** 12/12 PASS, confirmed by real execution on the VPS terminal, 2026-09-17. Tests every function in the `.mqh` above; does not touch a broker. |
 
@@ -217,8 +217,24 @@ deliberately: letting profits fund a later loss is loss-recovery/martingale-adja
 prohibits. A new `arb_harness_stage2_pairs.csv` records one row per pair — entry/exit prices, realized P&L,
 running daily/cumulative totals — so a pair's outcome is readable without cross-referencing the terminal.
 
-Recompiled clean (0 errors). **Not yet run.** This exercises code paths pair 1's two real runs never touched.
-Same standard as always: a clean compile is not evidence it works.
+Recompiled clean (0 errors). **Verified by real execution, 2026-09-17 18:40 — pair 2.** This exercises code
+paths pair 1's two real runs never touched. Same standard as always: a clean compile is not evidence it works.
+
+### Third real run, 2026-09-17 — pair 2, first real exercise of the R-011 fix
+
+With `InpMaxPairs` raised to 2, pair 2 fired: `GC-Z26` SELL @4390.23 (−0.09 adverse), `XAUUSD.vx` BUY @4351.03
+(zero slippage), reached `HEDGED` (positions 34236977 / 34236978), both legs flattened cleanly
+(`retcode=10009 DONE` on each). **Realized P&L: −$0.61**, computed by `GetDealPnL()` summing all four legs'
+`DEAL_PROFIT + DEAL_SWAP + DEAL_COMMISSION` via `HistoryDealSelect` — the first time this code path has ever
+run against a real broker. `RecordRealizedPnL()` correctly accumulated the full $0.61 into both
+`g_daily_loss_usd` and `g_cumulative_loss_usd` (Experts log: `daily loss $0.61/40.0, cumulative loss
+$0.61/250.0`), consistent with the loss-only asymmetry the self-test verified in isolation (G10). A row was
+written to `arb_harness_stage2_pairs.csv` with `outcome=COMPLETED`, entry/exit prices for both legs, and
+`pnl_status=confirmed`.
+
+This closes R-011's real-API gap: both halves of the fix — the pure loss-only arithmetic (self-test, 12/12
+PASS) and the real `HistoryDealSelect`/`GetDealPnL`/`RecordRealizedPnL` wiring (this run) — are now verified.
+`InpMaxPairs=2` is the current ceiling; raise it again only with the same scrutiny as before.
 
 ### Testability architecture — pure logic split out for self-testing, 2026-09-17
 
