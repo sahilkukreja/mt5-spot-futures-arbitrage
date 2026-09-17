@@ -185,8 +185,9 @@ bool IsTransientRetcode(int retcode)
 // start (unlike Stage 0's self-test) -- this journal is exactly what
 // section 7's restart-reconciliation contract depends on surviving.
 //====================================================================
-#define JOURNAL_FILE "arb_harness_stage2_journal.csv"
-#define STATE_FILE   "arb_harness_stage2_daily_state.txt"
+#define JOURNAL_FILE      "arb_harness_stage2_journal.csv"
+#define STATE_FILE        "arb_harness_stage2_daily_state.txt"
+#define PAIR_SUMMARY_FILE "arb_harness_stage2_pairs.csv"
 
 int g_journal_handle = INVALID_HANDLE;
 
@@ -467,6 +468,30 @@ bool GuardBudgets(double projected_worst_case_loss)
    return true;
   }
 
+// FIX (R-011, 2026-09-17): this is the piece that was entirely missing
+// before -- g_daily_loss_usd and g_cumulative_loss_usd were declared,
+// read by GuardBudgets(), and persisted, but nothing ever WROTE a
+// nonzero value to them after a pair completed. In practice this meant
+// InpMaxDailyLossUsd and InpMaxCumulativeLossUsd never actually
+// accumulated across pairs and could not trip regardless of real
+// losses -- a more serious gap than R-011's original framing ("enforced
+// from a worst-case estimate") implied. Caught on review after pair 1's
+// first successful run, not from any failure -- InpMaxPairs=1 meant it
+// had not yet mattered in practice.
+//
+// Only the LOSS portion of realized P&L is accumulated -- profits never
+// reduce these counters. This is deliberate: letting profits "buy back"
+// loss budget is a loss-recovery / martingale-adjacent pattern, and
+// PROJECT_MANDATE.md explicitly prohibits sizing or continuing on that
+// basis. A pair that makes money simply costs nothing against the
+// budget; it does not fund a later, larger loss.
+void RecordRealizedPnL(double pnl_usd)
+  {
+   double loss = (pnl_usd < 0) ? -pnl_usd : 0.0;
+   g_daily_loss_usd += loss;
+   g_cumulative_loss_usd += loss;
+  }
+
 //====================================================================
 // Real leg executor. Same idempotency/retry contract as Stage 0's
 // ExecuteLeg(), now against the live MT5 API. Every "send" is one
@@ -705,12 +730,36 @@ string RetcodeDescription(int retcode)
      }
   }
 
+// Returns a deal's full realized contribution to account P&L --
+// profit + swap + commission, all in account currency (USD here).
+// Used to compute a pair's true realized P&L from its deal tickets
+// (R-011). Returns 0 if the deal cannot be found -- callers must not
+// treat a silent 0 as "confirmed breakeven"; it may mean "not found".
+double GetDealPnL(ulong deal_ticket)
+  {
+   if(deal_ticket == 0 || !HistoryDealSelect(deal_ticket))
+      return 0;
+   return HistoryDealGetDouble(deal_ticket, DEAL_PROFIT)
+        + HistoryDealGetDouble(deal_ticket, DEAL_SWAP)
+        + HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION);
+  }
+
 // Emergency close of a filled leg by ticket -- used for rollback when
 // leg 2 fails after leg 1 filled. Single attempt is intentional: this
 // is the flatten path, not the open path; it retries internally via
 // the outer orphan-timeout/kill-switch mechanism, not here.
-bool CloseLegByTicket(ulong ticket)
+//
+// FIX (R-011, 2026-09-17): now captures the exit deal's confirmed price
+// and ticket via HistoryDealSelect, the same way ExecuteLeg() already
+// does for entries. Before this fix, a pair's realized P&L could not be
+// computed from the journal or Experts log at all -- only from the
+// terminal's own Trade History, discovered when reviewing pair 1's
+// first successful run.
+bool CloseLegByTicket(ulong ticket, double &out_close_price, ulong &out_close_deal)
   {
+   out_close_price = 0;
+   out_close_deal = 0;
+
    if(!PositionSelectByTicket(ticket))
      {
       Print("CRITICAL: cannot select position ", ticket, " for emergency close -- err=", GetLastError());
@@ -753,9 +802,24 @@ bool CloseLegByTicket(ulong ticket)
    else                                         request.type_filling = ORDER_FILLING_FOK;
 
    bool sent = OrderSend(request, result);
-   Print("EMERGENCY FLATTEN ticket=", ticket, " sent=", sent, " retcode=", result.retcode,
-         " (", RetcodeDescription((int)result.retcode), ")");
-   return sent && (result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_DONE_PARTIAL);
+   bool ok = sent && (result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_DONE_PARTIAL);
+
+   double close_price = result.price;
+   if(ok && result.deal != 0 && HistoryDealSelect(result.deal))
+     {
+      close_price = HistoryDealGetDouble(result.deal, DEAL_PRICE);
+      out_close_deal = result.deal;
+     }
+   else if(ok)
+     {
+      Print("WARNING: close reported success but deal ", result.deal, " not found in history -- ",
+            "using result-field price, not deal-confirmed. Flag this at pair 1 review.");
+     }
+   out_close_price = close_price;
+
+   Print("EMERGENCY FLATTEN position=", ticket, " deal=", result.deal, " sent=", sent, " retcode=", result.retcode,
+         " (", RetcodeDescription((int)result.retcode), ") close_price=", close_price);
+   return ok;
   }
 
 //====================================================================
@@ -784,6 +848,37 @@ string OutcomeName(int o)
       case OUTCOME_HALTED:              return "HALTED";
      }
    return "UNKNOWN";
+  }
+
+// Pair-level P&L summary, added 2026-09-17 (R-011). One row per pair
+// attempt, so a pair's realized outcome is readable directly from a
+// CSV without cross-referencing the terminal's Trade History. Written
+// once, at the end of RunOnePair(), regardless of outcome.
+void PairSummaryWrite(const string run_id, int pair_seq, int outcome,
+                       double leg1_entry, double leg1_exit,
+                       double leg2_entry, double leg2_exit,
+                       double realized_pnl_usd, bool pnl_confirmed,
+                       double daily_loss_after, double cumulative_loss_after)
+  {
+   bool is_new = !FileIsExist(PAIR_SUMMARY_FILE);
+   int h = FileOpen(PAIR_SUMMARY_FILE, FILE_READ|FILE_WRITE|FILE_TXT|FILE_ANSI|FILE_SHARE_READ);
+   if(h == INVALID_HANDLE)
+     {
+      Print("WARNING: cannot write pair summary -- err=", GetLastError());
+      return;
+     }
+   FileSeek(h, 0, SEEK_END);
+   if(is_new)
+      FileWriteString(h, "run_id,pair_seq,outcome,leg1_entry,leg1_exit,leg2_entry,leg2_exit,"
+                          "realized_pnl_usd,pnl_status,daily_loss_after,cumulative_loss_after\r\n");
+   string line = StringFormat("%s,%d,%s,%.5f,%.5f,%.5f,%.5f,%.2f,%s,%.2f,%.2f",
+      run_id, pair_seq, OutcomeName(outcome),
+      leg1_entry, leg1_exit, leg2_entry, leg2_exit,
+      realized_pnl_usd, pnl_confirmed ? "confirmed" : "INCOMPLETE",
+      daily_loss_after, cumulative_loss_after);
+   FileWriteString(h, line + "\r\n");
+   FileFlush(h);
+   FileClose(h);
   }
 
 void RunOnePair()
@@ -821,6 +916,9 @@ void RunOnePair()
       g_state = STATE_CLOSED;
       g_consecutive_failures++;
       g_pairs_total++;
+      // No deal ever filled -- genuinely zero cost, not an estimate.
+      PairSummaryWrite(g_run_id, pair_seq, OUTCOME_REJECTED_BROKER, 0, 0, 0, 0, 0, true,
+                        g_daily_loss_usd, g_cumulative_loss_usd);
       SavePersistedState();
       if(g_consecutive_failures >= InpMaxConsecutiveFailures)
          TripKillSwitch(StringFormat("%d consecutive failures", g_consecutive_failures));
@@ -835,11 +933,39 @@ void RunOnePair()
       g_state = STATE_ORPHANED;
       Print("LEG 1 PARTIAL FILL -- treating as exposure, emergency-flattening residual");
       g_state = STATE_EMERGENCY_FLATTENING;
-      bool flattened = CloseLegByTicket(leg1_position);
+      double close_price; ulong close_deal;
+      bool flattened = CloseLegByTicket(leg1_position, close_price, close_deal);
+
+      // BUG FIX, 2026-09-17: this branch previously fell through to
+      // CLOSED_ORPHAN/ORPHANED_RECOVERED/IDLE regardless of whether the
+      // flatten succeeded -- inconsistent with the other two
+      // flatten-failure paths below, which correctly halt instead.
+      // Never triggered in either real run so far (r1 was LEG_FILLED
+      // both times), caught on review while adding PairSummaryWrite,
+      // whose HALTED-vs-ORPHANED_RECOVERED row would otherwise have
+      // contradicted this branch's own final state and log line.
       if(!flattened)
+        {
          TripKillSwitch("partial-fill flatten failed -- manual intervention required NOW");
+         g_state = STATE_HALTED;
+         g_pairs_total++;
+         PairSummaryWrite(g_run_id, pair_seq, OUTCOME_HALTED, leg1_price, close_price, 0, 0, 0, false,
+                           g_daily_loss_usd, g_cumulative_loss_usd);
+         SavePersistedState();
+         Print("PAIR ", pair_seq, " outcome: ", OutcomeName(OUTCOME_HALTED));
+         return;
+        }
+
+      double pnl = GetDealPnL(leg1_deal) + GetDealPnL(close_deal);
+      RecordRealizedPnL(pnl);
+      PairSummaryWrite(g_run_id, pair_seq, OUTCOME_ORPHANED_RECOVERED, leg1_price, close_price, 0, 0,
+                        pnl, true, g_daily_loss_usd, g_cumulative_loss_usd);
+      Print("Pair ", pair_seq, " realized P&L: $", DoubleToString(pnl, 2),
+            "  (running: daily loss $", DoubleToString(g_daily_loss_usd, 2), "/", InpMaxDailyLossUsd,
+            ", cumulative loss $", DoubleToString(g_cumulative_loss_usd, 2), "/", InpMaxCumulativeLossUsd, ")");
       g_state = STATE_CLOSED_ORPHAN;
       g_pairs_total++;
+      g_pairs_today++;
       SavePersistedState();
       Print("PAIR ", pair_seq, " outcome: ", OutcomeName(OUTCOME_ORPHANED_RECOVERED));
       g_state = STATE_IDLE;
@@ -853,8 +979,6 @@ void RunOnePair()
    ENUM_LEG_RESULT r2 = ExecuteLeg(g_run_id, pair_seq, 2, InpSymbolSpot, ORDER_TYPE_BUY,
                                     InpVolume, leg2_price, leg2_deal, leg2_position);
 
-   double realized_loss = 0;
-
    if(r2 == LEG_FILLED || r2 == LEG_PARTIAL)
      {
       g_state = STATE_HEDGED;
@@ -865,20 +989,32 @@ void RunOnePair()
          Sleep((int)InpDwellMs); // fixed at 0 per section 8.1.1; kept for completeness
 
       g_state = STATE_UNWINDING;
-      bool c1 = CloseLegByTicket(leg1_position);
-      bool c2 = CloseLegByTicket(leg2_position);
+      double leg1_close_price, leg2_close_price; ulong leg1_close_deal, leg2_close_deal;
+      bool c1 = CloseLegByTicket(leg1_position, leg1_close_price, leg1_close_deal);
+      bool c2 = CloseLegByTicket(leg2_position, leg2_close_price, leg2_close_deal);
       if(!c1 || !c2)
         {
          TripKillSwitch(StringFormat("exit leg failed to close (leg1_ok=%s leg2_ok=%s) -- manual intervention required NOW",
                                       c1 ? "true" : "false", c2 ? "true" : "false"));
          g_state = STATE_HALTED;
          g_pairs_total++;
+         PairSummaryWrite(g_run_id, pair_seq, OUTCOME_HALTED, leg1_price, leg1_close_price,
+                           leg2_price, leg2_close_price, 0, false, g_daily_loss_usd, g_cumulative_loss_usd);
          SavePersistedState();
          Print("PAIR ", pair_seq, " outcome: ", OutcomeName(OUTCOME_HALTED));
          return;
         }
       g_state = STATE_CLOSED;
       g_consecutive_failures = 0;
+      g_pairs_total++;
+      g_pairs_today++;
+      double pnl = GetDealPnL(leg1_deal) + GetDealPnL(leg2_deal) + GetDealPnL(leg1_close_deal) + GetDealPnL(leg2_close_deal);
+      RecordRealizedPnL(pnl);
+      PairSummaryWrite(g_run_id, pair_seq, OUTCOME_COMPLETED, leg1_price, leg1_close_price,
+                        leg2_price, leg2_close_price, pnl, true, g_daily_loss_usd, g_cumulative_loss_usd);
+      Print("Pair ", pair_seq, " realized P&L: $", DoubleToString(pnl, 2),
+            "  (running: daily loss $", DoubleToString(g_daily_loss_usd, 2), "/", InpMaxDailyLossUsd,
+            ", cumulative loss $", DoubleToString(g_cumulative_loss_usd, 2), "/", InpMaxCumulativeLossUsd, ")");
       Print("PAIR ", pair_seq, " outcome: ", OutcomeName(OUTCOME_COMPLETED));
      }
    else
@@ -888,33 +1024,35 @@ void RunOnePair()
       g_state = STATE_ORPHANED;
       Print("LEG 2 FAILED -- rolling back leg 1 (position ", leg1_position, ")");
       g_state = STATE_EMERGENCY_FLATTENING;
-      bool flattened = CloseLegByTicket(leg1_position);
+      double close_price; ulong close_deal;
+      bool flattened = CloseLegByTicket(leg1_position, close_price, close_deal);
       if(!flattened)
         {
          TripKillSwitch("rollback of leg 1 failed after leg 2 failure -- manual intervention required NOW");
          g_state = STATE_HALTED;
          g_pairs_total++;
+         PairSummaryWrite(g_run_id, pair_seq, OUTCOME_HALTED, leg1_price, close_price, 0, 0, 0, false,
+                           g_daily_loss_usd, g_cumulative_loss_usd);
          SavePersistedState();
          Print("PAIR ", pair_seq, " outcome: ", OutcomeName(OUTCOME_HALTED));
          return;
         }
       g_state = STATE_CLOSED_ORPHAN;
       g_consecutive_failures++;
+      g_pairs_total++;
+      g_pairs_today++;
+      double pnl = GetDealPnL(leg1_deal) + GetDealPnL(close_deal);
+      RecordRealizedPnL(pnl);
+      PairSummaryWrite(g_run_id, pair_seq, OUTCOME_ORPHANED_RECOVERED, leg1_price, close_price, 0, 0,
+                        pnl, true, g_daily_loss_usd, g_cumulative_loss_usd);
+      Print("Pair ", pair_seq, " realized P&L: $", DoubleToString(pnl, 2),
+            "  (running: daily loss $", DoubleToString(g_daily_loss_usd, 2), "/", InpMaxDailyLossUsd,
+            ", cumulative loss $", DoubleToString(g_cumulative_loss_usd, 2), "/", InpMaxCumulativeLossUsd, ")");
       if(g_consecutive_failures >= InpMaxConsecutiveFailures)
          TripKillSwitch(StringFormat("%d consecutive failures", g_consecutive_failures));
       Print("PAIR ", pair_seq, " outcome: ", OutcomeName(OUTCOME_ORPHANED_RECOVERED));
      }
 
-   g_pairs_total++;
-   g_pairs_today++;
-   // realized_loss left at 0 here deliberately -- computing true realized
-   // P&L requires summing HistoryDealGetDouble(DEAL_PROFIT) across all
-   // four legs' deals, not attempted in this pass. Until that is added,
-   // InpMaxDailyLossUsd/InpMaxCumulativeLossUsd are enforced only at the
-   // PRE-TRADE budget-check stage (GuardBudgets, using the worst-case
-   // InpMaxTradeLossUsd estimate), not from realized P&L after the fact.
-   // This is a real gap: flag it explicitly at pair 1 review, and do not
-   // proceed to Stage 3/4 volumes until realized-P&L tracking is added.
    SavePersistedState();
    g_state = STATE_IDLE;
   }
@@ -1043,6 +1181,7 @@ int OnInit()
          "  today: ", g_pairs_today, "  cumulative loss so far: $", g_cumulative_loss_usd);
    Print("Click 'FIRE ONE PAIR' to fire exactly one pair. Nothing fires automatically.");
    Print("Journal: ", TerminalInfoString(TERMINAL_DATA_PATH), "\\MQL5\\Files\\", JOURNAL_FILE);
+   Print("Pair summary (P&L per pair): ", TerminalInfoString(TERMINAL_DATA_PATH), "\\MQL5\\Files\\", PAIR_SUMMARY_FILE);
 
    return(INIT_SUCCEEDED);
   }

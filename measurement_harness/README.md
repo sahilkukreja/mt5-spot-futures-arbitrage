@@ -195,13 +195,31 @@ trades its input symbols regardless of which chart it's attached to), but it mea
 kill-switch state file is untouched and would still show latched if that terminal is used again — it lives
 in a different `MQL5/Files/` folder entirely and was never actually cleared, just not present here.
 
+### Realized P&L tracking — fixed 2026-09-17, not yet re-run
+
+Reviewing pair 1's successful run surfaced two real defects, both fixed the same day:
+
+1. **The loss counters never accumulated at all.** Not "only a worst-case estimate" as first characterized —
+   `g_daily_loss_usd`/`g_cumulative_loss_usd` were never written to after a pair completed, for as long as
+   this file existed. `InpMaxDailyLossUsd` and `InpMaxCumulativeLossUsd` could not trip regardless of real
+   losses. `InpMaxPairs=1` meant this hadn't mattered yet in either real run. See `docs/RISK_REGISTER.md`
+   R-011 for the full account.
+2. **The `LEG_PARTIAL` branch didn't actually branch on flatten failure** — it fell through to
+   `CLOSED_ORPHAN`/`IDLE` regardless, unlike the other two failure paths. Never triggered (`r1` was always
+   `LEG_FILLED`), caught on review.
+
+**Fixed:** `CloseLegByTicket()` now captures the exit deal's confirmed price via `HistoryDealSelect`, exactly
+like `ExecuteLeg()` does for entries. A new `GetDealPnL()` and `RecordRealizedPnL()` compute and accumulate
+each pair's true realized P&L. **Only the loss portion accumulates — profits never offset the counters**,
+deliberately: letting profits fund a later loss is loss-recovery/martingale-adjacent, which the mandate
+prohibits. A new `arb_harness_stage2_pairs.csv` records one row per pair — entry/exit prices, realized P&L,
+running daily/cumulative totals — so a pair's outcome is readable without cross-referencing the terminal.
+
+Recompiled clean (0 errors). **Not yet run.** This exercises code paths pair 1's two real runs never touched.
+Same standard as always: a clean compile is not evidence it works.
+
 ### What is intentionally not yet implemented
 
-- **Realized P&L is not tracked.** `InpMaxDailyLossUsd`/`InpMaxCumulativeLossUsd` are enforced only at the
-  pre-trade budget-check stage, using the worst-case `InpMaxTradeLossUsd` estimate — not from actual realized
-  profit/loss summed after each pair closes. This is a real, deliberate gap, flagged in the code at the exact
-  point it matters (`RunOnePair()`, search for "realized_loss left at 0"). Do not raise `InpMaxPairs` beyond
-  a handful of manually-supervised pairs until this is closed.
 - **The Stage 3/4 automated scheduler and the `stage2_confirmed.flag` stage-gate file (T20) do not exist in
   this file.** This build is scoped to Stage 2's manual single-pair procedure only, matching the account
   owner's explicit request to test with one pair first. Building the automated scheduler is separate,

@@ -408,23 +408,37 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   what it actually costs. Actual realized profit/loss, summed from `HistoryDealGetDouble(..., DEAL_PROFIT)`
   across all four legs of a closed pair, is never computed or fed back into the running totals. Flagged
   explicitly in the code at the exact line it matters (`RunOnePair()`, search "realized_loss left at 0").
-- **Consequence:** the daily/cumulative loss guards are real and fail-safe against the *worst-case estimate*,
-  but do not tighten or loosen based on what has *actually* happened. A run of pairs that each lose close to
-  `InpMaxTradeLossUsd` would correctly trip the daily cap after roughly `InpMaxDailyLossUsd /
-  InpMaxTradeLossUsd` pairs -- but a run of profitable or breakeven pairs consumes budget headroom it never
-  actually used, and a pair that loses *more* than the worst-case estimate (should the estimate itself prove
-  wrong) would not be caught by these guards at all.
-- **Severity:** medium -- the guards remain fail-safe in the sense that mattered for pair 1 (they never
-  *permit* more than the config allows), but they are a cruder instrument than "realized P&L" implies.
-- **Mitigation:** do not raise `InpMaxPairs` beyond a small, manually-supervised number until this is closed.
-  Documented as a known gap in `measurement_harness/README.md` rather than left to be discovered.
-- **Trigger/metric:** any request to run more than a handful of pairs unattended.
-- **Owner:** whoever next touches `HarnessStage2_LivePilot.mq5`.
-- **Status:** open. **Related gap found 2026-09-17, same root cause:** `CloseLegByTicket()` logs
-  `sent`/`retcode` but never captures the exit fill price or time via `HistoryDealSelect`, unlike
-  `ExecuteLeg()`'s entry path. Surfaced when reviewing pair 1's successful completion -- its actual realized
-  P&L cannot be computed from the journal or Experts log alone, only from the terminal's own Trade History.
-  Worth fixing together with the realized-P&L summing above, not yet done.
+- **Consequence, corrected 2026-09-17 -- more severe than first characterized.** On closer review while
+  fixing this, `g_daily_loss_usd`/`g_cumulative_loss_usd` were not merely using a coarse worst-case estimate
+  -- **nothing ever wrote a nonzero value to them after a pair completed at all.** `InpMaxDailyLossUsd` and
+  `InpMaxCumulativeLossUsd` could not accumulate across pairs and could not trip regardless of real realized
+  losses, for as long as this file existed. `InpMaxPairs=1` meant this had not yet mattered in either real
+  run.
+- **Severity:** was medium, correctly upgraded to **high** on the corrected understanding above -- two of
+  the six documented risk-limit controls (§6 of the design doc) were non-functional as multi-pair safety
+  limits, not merely imprecise.
+- **Fixed, 2026-09-17.** `CloseLegByTicket()` now captures the exit deal's confirmed price and ticket via
+  `HistoryDealSelect`, matching `ExecuteLeg()`'s entry-side pattern. A new `GetDealPnL()` sums
+  `DEAL_PROFIT + DEAL_SWAP + DEAL_COMMISSION` per deal; `RunOnePair()` computes each pair's true realized
+  P&L from all its deal tickets (2 for a rejected/rolled-back leg, up to 4 for a completed pair) and a new
+  `RecordRealizedPnL()` actually accumulates it. **Deliberate design choice: only the loss portion
+  accumulates -- profits never offset the counters.** Letting profits "buy back" loss budget is a
+  loss-recovery/martingale-adjacent pattern the mandate explicitly prohibits; a profitable pair now costs
+  nothing against the budget rather than funding a later, larger loss. A new per-pair summary CSV
+  (`arb_harness_stage2_pairs.csv`) records entry/exit prices, realized P&L, and the running daily/cumulative
+  totals after every pair -- resolving the original logging gap directly, not just the accumulation bug.
+- **A second, distinct bug found and fixed during this same review:** the `LEG_PARTIAL` (leg 1 partial fill)
+  branch fell through to `CLOSED_ORPHAN`/`ORPHANED_RECOVERED`/`IDLE` regardless of whether the emergency
+  flatten actually succeeded -- inconsistent with the other two flatten-failure paths, which correctly halt.
+  Never triggered in either real run (`r1` was `LEG_FILLED` both times), caught on review, not from a
+  failure. Now mirrors the other two paths exactly.
+- **Mitigation:** recompiled clean (0 errors). **Not yet re-run** -- this is new code exercising new paths
+  (`GetDealPnL`, the fixed `LEG_PARTIAL` branch, `RecordRealizedPnL`) that pair 1's two real runs never
+  touched. Do not treat a clean compile as evidence it works, per this project's own standing rule.
+- **Trigger/metric:** the next real pair's `PAIR_SUMMARY_FILE` row and Experts log realized-P&L line should
+  be cross-checked against the terminal's own Trade History, same standard as every other real run.
+- **Owner:** whoever runs the next pair.
+- **Status:** fixed, unverified against real execution.
 
 ### R-012: Budget guards are per-terminal state, not a true global cap, if run from more than one place
 - **Raised:** 2026-09-17, prompted by the account owner standardizing on a VPS (Administrator user, terminal
