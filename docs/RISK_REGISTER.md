@@ -588,16 +588,24 @@ live-trading on it
 - **Severity:** high -- not because anything this project built is unsafe in isolation, but because the
   precondition the whole Stage 2 risk posture was reasoned against (`§7`) does not hold, and was not caught
   by any deliberate check.
-- **Mitigation:** not yet decided by the account owner as of this entry. Recommended: close both of the
-  legacy bot's open pairs and detach it from this account, restoring the isolation `§7` already assumed.
-  If that is not done, `35_1000_USD_LIVE_TEST_PLAN.md` §7 and every margin/budget figure derived from it need
-  to be corrected to describe a shared, non-isolated account explicitly, rather than silently continuing on
-  an assumption already known to be false.
+- **Mitigation decision, 2026-09-18: the account owner will not close the legacy positions, because they are
+  currently at a loss.** That is a legitimate, separate trading decision on the account owner's own position,
+  not something this project should push against for the sake of restoring isolation. Consequence, observed
+  the same day: firing Stage 2 pair 3 (`InpMaxPairs` raised to 3) was correctly `BLOCKED: projected margin
+  level below InpMinMarginLevelPct (300.0%)` — a direct, real, working demonstration of consequence 1 above,
+  not a hypothetical. **This is the guard functioning exactly as designed; the fix is not to relax
+  `InpMinMarginLevelPct`.** Two live paths forward, both requiring an account-owner decision, neither
+  resolvable in code: (a) wait for the legacy bot to close its own positions or for margin conditions to
+  improve, and retry pair 3 then; or (b) open a genuinely separate, independently-funded account for Stage
+  2/3/4 — the original §7 intent — leaving the legacy position and account entirely untouched. (b) is the
+  cleaner fix and does not require realizing anything on the legacy position.
 - **Trigger/metric:** confirm via a fresh `PositionsTotal()`/`PositionSelectByTicket()` sweep (not just this
   EA's own magic-number-filtered view) whether any non-Stage-2 position remains open on this account, before
-  trusting §7's isolation claim again.
+  trusting §7's isolation claim again -- or, if path (b) is taken, confirm the new account is actually clean
+  the same way.
 - **Owner:** the account owner.
-- **Status:** open, confirmed, unmitigated.
+- **Status:** open, confirmed. Mitigation path chosen: neither (a) nor (b) yet acted on; Stage 2 pair 3 is
+  blocked in the meantime by the margin guard, correctly.
 
 ---
 
