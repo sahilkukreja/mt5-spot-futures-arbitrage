@@ -21,7 +21,7 @@ needs a full, reviewed design first.
 | File | Stage | Status |
 |---|---|---|
 | `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | **Verified.** 12/12 PASS, confirmed by real execution, 2026-09-16. |
-| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Run once, 2026-09-17: real bug found and fixed** (close path used the wrong ticket type in Hedge mode — see "First real run" below). Recompiled clean. **Not yet re-run.** Places real orders. |
+| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pair 1 completed successfully, 2026-09-17**, after one real bug found and fixed on the prior attempt (close path used the wrong ticket type in Hedge mode). `InpMaxPairs` still 1 — see "Second real run" below before raising it. Places real orders. |
 
 Stage 1 (demo shakedown) was skipped by explicit account-owner decision — see `RISK_REGISTER.md` R-010 and
 `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 8. No Stage 1 file exists or will.
@@ -174,6 +174,26 @@ This is exactly the outcome the design predicted: a real-API defect, found at pa
 skipped, caught by the kill switch rather than causing silent damage, costing a manual intervention rather
 than money. Treat whatever fires next as **pair 1 again**, not pair 2 — the elevated pair-1 scrutiny in
 `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §8.1.3 was not yet exercised against a successful close.
+
+### Second real run, 2026-09-17 — pair 1 completed successfully
+
+Same day, re-run with the position-ticket fix in place. Both legs opened (`GC-Z26` SELL @4399.73 vs
+ref 4399.74, `+0.01` adverse; `XAUUSD.vx` BUY @4360.39, zero slippage), reached `HEDGED`
+(positions 34236921 / 34236922), and both closed cleanly — `EMERGENCY FLATTEN` on each leg returned
+`retcode=10009 (DONE)`. Final line: **`PAIR 1 outcome: COMPLETED`**. Zero errors, zero kill-switch trips.
+The position-ticket fix held on its first real retry.
+
+**A logging gap surfaced in reviewing this run, not a safety defect:** `CloseLegByTicket()` reports
+`sent`/`retcode` but never captures the exit fill price or time the way `ExecuteLeg()` does for entries via
+`HistoryDealSelect`. This pair's actual realized P&L cannot be computed from the journal or the Experts log
+alone — only from the terminal's own Trade History. Same root cause as R-011 (realized P&L isn't tracked);
+worth fixing together, not yet done.
+
+**This run came from a different environment than the failed one** — a different Windows user profile and
+terminal data folder than the `sahil`-user run that hit the ticket bug. Functionally irrelevant (the EA
+trades its input symbols regardless of which chart it's attached to), but it means the earlier run's
+kill-switch state file is untouched and would still show latched if that terminal is used again — it lives
+in a different `MQL5/Files/` folder entirely and was never actually cleared, just not present here.
 
 ### What is intentionally not yet implemented
 

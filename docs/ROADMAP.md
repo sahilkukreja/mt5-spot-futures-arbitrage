@@ -279,6 +279,19 @@ yet, simulated or real. One precondition remains genuinely open: live verificati
 funding and position count, which needs a live MT5 connection this project doesn't currently have. Everything
 else the gate required is done.
 
+**Update 2026-09-17 (same day) — pair 1 ran for real, found a real bug, then completed successfully.**
+First attempt: both legs opened correctly, `HEDGED` reached, then the close failed on both legs
+(`PositionSelectByTicket` given a deal ticket instead of a position ticket — they differ in Hedge mode).
+Kill switch latched correctly rather than retrying blindly; both positions closed manually, no unhedged
+exposure at any point. Fixed by reading the position ticket via `DEAL_POSITION_ID`. Re-run, same day: pair 1
+**completed** cleanly — both legs opened, both closed, `retcode=DONE` throughout, zero errors. R-010 updated
+with both events; new R-011 for a related, lower-severity gap (realized P&L, including exit fill prices on
+the close path, isn't tracked yet — flagged, not yet fixed, `InpMaxPairs` stays at 1 until it is).
+
+This is the outcome the design was built for: a real defect, found at the smallest possible scale, caught by
+a control rather than causing damage, fixed from real evidence rather than assumption — the same pattern as
+every one of Stage 0's four rounds, now demonstrated once on real capital.
+
 **Earlier the same day — the harness design (Stage C item, §3) was pulled forward and is now written:**
 `04_testing/34_DEMO_TEST_PLAN.md`, proposed as D-007. It is design-only and authorizes nothing; it needs
 `/arb-risk-review` and `/arb-hostile-review` before any MQL5. Pulling it ahead of A4 is defensible because the

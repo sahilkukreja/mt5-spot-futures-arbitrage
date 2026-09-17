@@ -395,6 +395,11 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   both Hedge and Netting modes. This is exactly the class of defect Stage 1 would have caught for free; it
   was instead caught at pair 1, with real capital briefly exposed to a close-path bug rather than an
   open-path one. Full account: `measurement_harness/README.md` -> "What Stage 2 is" -> "First real run".
+- **Resolved, 2026-09-17 (same day) -- pair 1 re-run, completed successfully.** With the fix in place:
+  both legs opened, reached `HEDGED`, both closed with `retcode=10009 (DONE)`, final outcome
+  `COMPLETED`. Zero errors. The position-ticket fix held on its first real retry. This closes the acute
+  form of this risk (an open bug in the close path); R-011 remains open as a related, lower-severity gap.
+  Full account: `measurement_harness/README.md` -> "Second real run".
 
 ### R-011: HarnessStage2_LivePilot.mq5's realized P&L tracking is not implemented
 - **Raised:** 2026-09-17
@@ -415,7 +420,11 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   Documented as a known gap in `measurement_harness/README.md` rather than left to be discovered.
 - **Trigger/metric:** any request to run more than a handful of pairs unattended.
 - **Owner:** whoever next touches `HarnessStage2_LivePilot.mq5`.
-- **Status:** open.
+- **Status:** open. **Related gap found 2026-09-17, same root cause:** `CloseLegByTicket()` logs
+  `sent`/`retcode` but never captures the exit fill price or time via `HistoryDealSelect`, unlike
+  `ExecuteLeg()`'s entry path. Surfaced when reviewing pair 1's successful completion -- its actual realized
+  P&L cannot be computed from the journal or Experts log alone, only from the terminal's own Trade History.
+  Worth fixing together with the realized-P&L summing above, not yet done.
 
 ---
 
