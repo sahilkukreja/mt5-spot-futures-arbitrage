@@ -533,15 +533,21 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   more conservative than a delayed one), but a documented risk-control number (`InpMaxTradeLossUsd`'s
   derivation) does not match what the code actually does, and this project's own standard is that a risk
   figure's derivation must be verified against real code, not assumed from an input's name.
-- **Mitigation:** not yet done. Either (a) wire up real ack/fill/orphan timeout enforcement matching the
-  documented derivation, or (b) correct `35_1000_USD_LIVE_TEST_PLAN.md` §6's `InpMaxTradeLossUsd` derivation
-  to describe the immediate-flatten behavior the code actually has, and remove or repurpose the three unused
-  inputs. Either is a same-day fix; neither has been done.
-- **Trigger/metric:** re-derive `InpMaxTradeLossUsd`'s justification directly from `RunOnePair()`'s actual
-  code path before citing the $4.85 figure again, and/or the next pair that requires a real leg-open retry
-  (none has yet) to observe actual multi-attempt elapsed time.
-- **Owner:** whoever next touches `HarnessStage2_LivePilot.mq5`'s timeout/retry logic.
-- **Status:** open, unmitigated.
+- **Fixed, 2026-09-18.** `CloseLegByTicket()` now retries on the same `IsTransientRetcode` whitelist
+  `ExecuteLeg()` already uses, bounded by `InpOrphanTimeoutMs` as a wall-clock ceiling (not an attempt count)
+  -- a genuine bound on worst-case unhedged-exposure duration, matching `InpMaxTradeLossUsd`'s own $4.85
+  derivation for the first time. `ExecuteLeg()`'s retry loop now also checks elapsed wall-clock time against
+  `InpFillTimeoutMs` in addition to `InpMaxOpenRetries`. `InpAckTimeoutMs` was **removed**, not fixed -- it had
+  no real enforcement point in this file's synchronous `OrderSend()` dispatch (no separate "waiting for ack"
+  phase exists to bound); keeping a declared-but-unenforceable input was judged worse than removing it.
+  Compiled clean (0 errors). **Not yet run for real** -- no pair so far (n=2) has ever hit a transient retcode
+  on either the open or close path, so this new retry logic has never actually executed against a real
+  broker. Same standard as always: a clean compile is not evidence it works.
+- **Trigger/metric:** the first real pair that hits a transient retcode on any leg (open or close) exercises
+  this code for the first time -- verify the retry/timeout behavior in the Experts log against what's
+  documented here.
+- **Owner:** whoever runs the next pair.
+- **Status:** fixed, unverified against real execution.
 
 ---
 

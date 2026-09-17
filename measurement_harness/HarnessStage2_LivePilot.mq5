@@ -75,9 +75,18 @@ input long   InpMaxCrossLegSkewMs    = 400;     // UNCALIBRATED -- the 384ms p95
                                                   // inside this threshold) -- kept only as a supplementary signal,
                                                   // per HarnessStage2_Guards.mqh's GuardFastMarketLogic() comment
 input long   InpVelocityLookbackMs   = 3000;    // window scanned via CopyTicksRange() before each fire
-input long   InpAckTimeoutMs         = 5000;
-input long   InpFillTimeoutMs        = 10000;
-input long   InpOrphanTimeoutMs      = 3000;
+// InpAckTimeoutMs REMOVED (R-013, 2026-09-18): was declared but never
+// enforced anywhere -- OrderSend() here is synchronous, so there is no
+// separate "waiting for ack" phase distinct from "waiting for fill" to
+// bound; the whole call blocks until the server responds either way.
+// A real ack-timeout only means something once OrderSendAsync() is
+// used (a bigger, deliberate design change, not made here -- see
+// docs/Gold-Basis-EA-Strategy-and-System-Design.md section 8's note
+// that async dispatch is a later alternative, not the current policy).
+// Removing a dead input is preferred over leaving one that implies an
+// enforcement guarantee that does not exist.
+input long   InpFillTimeoutMs        = 10000;   // wall-clock ceiling on ExecuteLeg()'s retry loop -- FIX R-013
+input long   InpOrphanTimeoutMs      = 3000;    // wall-clock ceiling on CloseLegByTicket()'s retry loop -- FIX R-013
 input long   InpDwellMs              = 0;       // fixed per section 8.1.1, not varied in Stage 2
 input long   InpMagicNumber          = 20260916;
 input string InpExpiryHardStopDate   = "2026.11.25 00:00:00"; // GC-Z26 expiry; refuse within 14 days
@@ -597,6 +606,7 @@ ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
    out_ticket = 0;
    out_position_ticket = 0;
    string direction = (order_type == ORDER_TYPE_BUY) ? "BUY" : "SELL";
+   long t_leg_start = (long)GetTickCount64(); // R-013: wall-clock ceiling, see the retry decision below
 
    while(true)
      {
@@ -667,8 +677,16 @@ ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
 
          if(IsTransientRetcode(retcode))
            {
-            if(attempt < InpMaxOpenRetries)
+            long elapsed_ms = (long)GetTickCount64() - t_leg_start;
+            // FIX (R-013, 2026-09-18): InpFillTimeoutMs was a declared,
+            // never-referenced input -- InpMaxOpenRetries alone bounded
+            // attempt COUNT, not wall-clock TIME, so a slow broker could
+            // in principle retry InpMaxOpenRetries times over an
+            // unbounded elapsed duration. Now bounded by both.
+            if(attempt < InpMaxOpenRetries && elapsed_ms < InpFillTimeoutMs)
                continue;
+            Print("[pair ", pair_seq, " leg ", leg_id, "] retry loop ending: attempt=", attempt,
+                  "/", InpMaxOpenRetries, " elapsed=", elapsed_ms, "ms/", InpFillTimeoutMs, "ms");
             return LEG_FAILED_AFTER_RETRIES;
            }
          // Non-transient (or send() itself failed to reach the trade
@@ -763,13 +781,26 @@ double GetDealPnL(ulong deal_ticket)
   }
 
 // Emergency close of a filled leg by ticket -- used for rollback when
-// leg 2 fails after leg 1 filled. Single attempt is intentional: this
-// is the flatten path, not the open path; it retries internally via
-// the outer orphan-timeout/kill-switch mechanism, not here.
+// leg 2 fails after leg 1 filled.
 //
-// FIX (R-011, 2026-09-17): now captures the exit deal's confirmed price
-// and ticket via HistoryDealSelect, the same way ExecuteLeg() already
-// does for entries. Before this fix, a pair's realized P&L could not be
+// FIX (R-013, 2026-09-18): originally a single attempt, documented as
+// "retries internally via the outer orphan-timeout/kill-switch
+// mechanism, not here" -- but no such mechanism existed anywhere else
+// in this file, and InpOrphanTimeoutMs was a declared, never-referenced
+// input (confirmed by grep, RISK_REGISTER.md R-013). A single transient
+// retcode (e.g. REQUOTE) on the highest-stakes call in this whole EA
+// -- flattening an orphaned leg -- immediately tripped the kill switch
+// with no attempt to recover. Now retries on the same IsTransientRetcode
+// whitelist ExecuteLeg() already uses, bounded by wall-clock
+// InpOrphanTimeoutMs, not by an attempt count -- an orphan close must
+// stop trying and escalate to the kill switch by a bounded TIME, not
+// after an arbitrary number of attempts that could itself take
+// arbitrarily long. Non-transient failures still return false on the
+// first attempt, unchanged.
+//
+// FIX (R-011, 2026-09-17): captures the exit deal's confirmed price and
+// ticket via HistoryDealSelect, the same way ExecuteLeg() already does
+// for entries. Before this fix, a pair's realized P&L could not be
 // computed from the journal or Experts log at all -- only from the
 // terminal's own Trade History, discovered when reviewing pair 1's
 // first successful run.
@@ -777,67 +808,96 @@ bool CloseLegByTicket(ulong ticket, double &out_close_price, ulong &out_close_de
   {
    out_close_price = 0;
    out_close_deal = 0;
+   long t_start = (long)GetTickCount64();
+   int attempt = 0;
 
-   if(!PositionSelectByTicket(ticket))
+   while(true)
      {
-      Print("CRITICAL: cannot select position ", ticket, " for emergency close -- err=", GetLastError());
-      return false;
+      attempt++;
+
+      if(!PositionSelectByTicket(ticket))
+        {
+         Print("CRITICAL: cannot select position ", ticket, " for emergency close -- err=", GetLastError());
+         return false;
+        }
+      string symbol = PositionGetString(POSITION_SYMBOL);
+      double volume = PositionGetDouble(POSITION_VOLUME);
+      long   type   = PositionGetInteger(POSITION_TYPE);
+
+      MqlTradeRequest request;
+      MqlTradeResult  result;
+      ZeroMemory(request);
+      ZeroMemory(result);
+
+      MqlTick t;
+      SymbolInfoTick(symbol, t);
+
+      request.action    = TRADE_ACTION_DEAL;
+      request.symbol     = symbol;
+      request.volume      = volume;
+      request.position     = ticket;
+      request.magic     = InpMagicNumber;
+      request.deviation = InpSlippagePoints;
+      request.comment   = "EMERGENCY_FLATTEN";
+
+      if(type == POSITION_TYPE_BUY)
+        {
+         request.type = ORDER_TYPE_SELL;
+         request.price = t.bid;
+        }
+      else
+        {
+         request.type = ORDER_TYPE_BUY;
+         request.price = t.ask;
+        }
+
+      int filling = (int)SymbolInfoInteger(symbol, SYMBOL_FILLING_MODE);
+      if((filling & SYMBOL_FILLING_FOK) != 0)      request.type_filling = ORDER_FILLING_FOK;
+      else if((filling & SYMBOL_FILLING_IOC) != 0) request.type_filling = ORDER_FILLING_IOC;
+      else                                         request.type_filling = ORDER_FILLING_FOK;
+
+      bool sent = OrderSend(request, result);
+      bool ok = sent && (result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_DONE_PARTIAL);
+
+      if(!ok)
+        {
+         Print("EMERGENCY FLATTEN attempt ", attempt, " position=", ticket, " sent=", sent,
+               " retcode=", result.retcode, " (", RetcodeDescription((int)result.retcode), ")");
+         long elapsed_ms = (long)GetTickCount64() - t_start;
+         if(IsTransientRetcode((int)result.retcode) && elapsed_ms < InpOrphanTimeoutMs)
+           {
+            Print("EMERGENCY FLATTEN retrying position=", ticket, " -- transient retcode, ",
+                  elapsed_ms, "ms of ", InpOrphanTimeoutMs, "ms orphan-timeout budget used");
+            continue;
+           }
+         Print("EMERGENCY FLATTEN GIVING UP position=", ticket, " after ", attempt, " attempt(s), ",
+               elapsed_ms, "ms elapsed (", (IsTransientRetcode((int)result.retcode) ? "orphan timeout exceeded"
+               : "non-transient retcode"), ")");
+         return false;
+        }
+
+      double close_price = result.price;
+      if(result.deal != 0 && HistoryDealSelect(result.deal))
+        {
+         close_price = HistoryDealGetDouble(result.deal, DEAL_PRICE);
+         out_close_deal = result.deal;
+        }
+      else
+        {
+         Print("WARNING: close reported success but deal ", result.deal, " not found in history -- ",
+               "using result-field price, not deal-confirmed. Flag this at pair 1 review.");
+        }
+      out_close_price = close_price;
+
+      Print("EMERGENCY FLATTEN position=", ticket, " deal=", result.deal, " attempt=", attempt,
+            " retcode=", result.retcode, " (", RetcodeDescription((int)result.retcode),
+            ") close_price=", close_price);
+      return true;
      }
-   string symbol = PositionGetString(POSITION_SYMBOL);
-   double volume = PositionGetDouble(POSITION_VOLUME);
-   long   type   = PositionGetInteger(POSITION_TYPE);
-
-   MqlTradeRequest request;
-   MqlTradeResult  result;
-   ZeroMemory(request);
-   ZeroMemory(result);
-
-   MqlTick t;
-   SymbolInfoTick(symbol, t);
-
-   request.action    = TRADE_ACTION_DEAL;
-   request.symbol     = symbol;
-   request.volume      = volume;
-   request.position     = ticket;
-   request.magic     = InpMagicNumber;
-   request.deviation = InpSlippagePoints;
-   request.comment   = "EMERGENCY_FLATTEN";
-
-   if(type == POSITION_TYPE_BUY)
-     {
-      request.type = ORDER_TYPE_SELL;
-      request.price = t.bid;
-     }
-   else
-     {
-      request.type = ORDER_TYPE_BUY;
-      request.price = t.ask;
-     }
-
-   int filling = (int)SymbolInfoInteger(symbol, SYMBOL_FILLING_MODE);
-   if((filling & SYMBOL_FILLING_FOK) != 0)      request.type_filling = ORDER_FILLING_FOK;
-   else if((filling & SYMBOL_FILLING_IOC) != 0) request.type_filling = ORDER_FILLING_IOC;
-   else                                         request.type_filling = ORDER_FILLING_FOK;
-
-   bool sent = OrderSend(request, result);
-   bool ok = sent && (result.retcode == TRADE_RETCODE_DONE || result.retcode == TRADE_RETCODE_DONE_PARTIAL);
-
-   double close_price = result.price;
-   if(ok && result.deal != 0 && HistoryDealSelect(result.deal))
-     {
-      close_price = HistoryDealGetDouble(result.deal, DEAL_PRICE);
-      out_close_deal = result.deal;
-     }
-   else if(ok)
-     {
-      Print("WARNING: close reported success but deal ", result.deal, " not found in history -- ",
-            "using result-field price, not deal-confirmed. Flag this at pair 1 review.");
-     }
-   out_close_price = close_price;
-
-   Print("EMERGENCY FLATTEN position=", ticket, " deal=", result.deal, " sent=", sent, " retcode=", result.retcode,
-         " (", RetcodeDescription((int)result.retcode), ") close_price=", close_price);
-   return ok;
+   // Unreachable: every branch inside the loop returns or continues.
+   // Kept as an explicit fail-closed default for the compiler's benefit,
+   // matching the same pattern in ExecuteLeg() and HarnessStage0_DryRun.mq5.
+   return false;
   }
 
 //====================================================================

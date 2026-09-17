@@ -341,6 +341,26 @@ remains blocked behind mitigations 2–7 and a full re-review, unchanged by this
 directly strengthen Stage 2's own posture for pairs 3–10, once the self-test actually runs and the guard is
 exercised on a real pair without incident.
 
+### Timeout/retry enforcement (R-013) — fixed 2026-09-18, compiled clean, not yet run for real
+
+`InpAckTimeoutMs`, `InpFillTimeoutMs`, and `InpOrphanTimeoutMs` were declared inputs that nothing in the file
+ever referenced — confirmed by grep. In particular, `InpMaxTradeLossUsd=15`'s own documented justification
+(`35_1000_USD_LIVE_TEST_PLAN.md` §6) depends on `InpOrphanTimeoutMs` bounding worst-case unhedged exposure at
+~$4.85; the actual code flattened an orphaned leg in a single attempt with no timeout at all, so that
+derivation described a mechanism that didn't exist.
+
+**Fixed:** `CloseLegByTicket()` now retries on the same `IsTransientRetcode` whitelist `ExecuteLeg()` already
+uses, bounded by `InpOrphanTimeoutMs` as a wall-clock ceiling — a real bound on how long the EA will keep
+trying to flatten an orphan before giving up and tripping the kill switch, matching the design doc's own
+arithmetic for the first time. `ExecuteLeg()`'s retry loop now also checks elapsed wall-clock time against
+`InpFillTimeoutMs`, not just `InpMaxOpenRetries`. `InpAckTimeoutMs` was **removed** rather than fixed — this
+file's `OrderSend()` dispatch is synchronous, so there's no separate "waiting for ack" phase distinct from
+"waiting for fill" to bound; keeping a declared-but-unenforceable input was judged worse than removing it.
+
+Recompiled clean (0 errors). **Not yet run for real** — no pair so far (n=2) has ever hit a transient retcode
+on either the open or close path, so this new retry logic has never actually executed against a real broker.
+Full account: `docs/RISK_REGISTER.md` R-013.
+
 ### What is intentionally not yet implemented
 
 - **The Stage 3/4 automated scheduler and the `stage2_confirmed.flag` stage-gate file (T20) do not exist in
