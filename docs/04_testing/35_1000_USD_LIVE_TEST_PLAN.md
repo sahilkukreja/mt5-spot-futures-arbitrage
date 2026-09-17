@@ -222,6 +222,16 @@ open, funded, and empty" are different levels of evidence; only the second satis
 the same standard applied throughout this project to every other claim — see, for instance, why Stage 0 was
 run four times before being trusted rather than accepted on the first PASS.
 
+**Correction, 2026-09-18 (R-014): "no other positions" was false at least by the time this was discovered,
+possibly since before pair 1.** The legacy `MMT_TradePannel_Pro` EA is confirmed attached and actively
+trading on this same account, with 2 open pairs, discovered by chance in a pasted Experts log excerpt, not by
+any check this project had in place. Every margin/isolation claim below, and the pre-flight-checklist item
+above, must be read as **not currently satisfied** until the account owner either closes the legacy bot's
+positions and detaches it, or this document is revised to describe a shared, non-isolated account explicitly.
+See `RISK_REGISTER.md` R-014 for the full account, including why this specific legacy EA is a known-unreliable
+one independent of the isolation question (408 `OpenLeg FAIL` events in under 50 minutes, no retry logic in
+its own "canonical" file — `01_research/06_EXISTING_SYSTEM_RESEARCH.md`).
+
 **Handling the new account's credentials:** the same safeguard this project already applies holds without
 exception — the account number and any login credentials are never printed to a committed file, never pasted
 into a doc, and never logged by the harness. Connection details belong in a local, gitignored config (the

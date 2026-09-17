@@ -205,14 +205,20 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   separately confirms skew alone (238ms, the event's own documented value) does **not** block it, reproducing
   rather than contradicting this entry's prior finding. All thresholds
   (`InpMaxVelocityPtsPerSec=20.0`, `InpMaxQuoteAgeMs=2000`, `InpMaxCrossLegSkewMs=400`) are inputs, labeled
-  UNCALIBRATED, same status as `InpMaxSpreadUsd` — reasoned candidates, not derived numbers. **Not yet run**:
-  the self-test's G13–G17 (pure logic, no broker), and `GuardFastMarket()` itself against a real broker
-  connection (never exercised). This addresses Stage 3/4 review mitigation 1's core ask but does not by
-  itself clear Stage 3/4 — mitigations 2–7 and a full re-review remain outstanding. It does strengthen Stage
-  2 pairs 3–10 directly, once verified. See `measurement_harness/README.md` "Fast-market/stale-quote guard"
-  for the full account.
+  UNCALIBRATED, same status as `InpMaxSpreadUsd` — reasoned candidates, not derived numbers.
+- **Update 2026-09-18 (same day) — pure logic verified by real execution.** `HarnessStage2_SelfTest.mq5`
+  ran on the VPS terminal: **17/17 PASS (G1–G17).** G17 confirmed the guard blocks the actual 2026-09-11
+  event using its real recorded velocity (`velocity_futures=161.56, velocity_spot=113.11` pts/sec, both
+  exceeding the candidate threshold); G16 confirmed skew alone (238ms) would not have. **Still not run:**
+  `GuardFastMarket()`/`MaxVelocityInWindow()` themselves against a real broker connection — `CopyTicksRange()`
+  behavior (tick availability, timestamp granularity) is unverified until a real pair exercises it. This
+  addresses Stage 3/4 review mitigation 1's core ask but does not by itself clear Stage 3/4 — mitigations
+  2–7 and a full re-review remain outstanding. It does strengthen Stage 2 pairs 3–10 directly, and its pure
+  logic is now genuinely trustworthy, not just compiled. See `measurement_harness/README.md` "Fast-market/
+  stale-quote guard" for the full account.
 - **Owner:** Data and execution research
-- **Status:** open — mitigation implemented, unverified against real execution
+- **Status:** open — pure logic verified (17/17 PASS, real execution 2026-09-18); real-API wrapper
+  (`GuardFastMarket()`) still unverified against a real broker connection.
 
 ### R-005: Incorrect futures contract or expiry transition
 - **Cause:** stale symbol configuration, inaccurate broker metadata, silent symbol substitution, or trading inside the roll/expiry risk window
@@ -548,6 +554,50 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   documented here.
 - **Owner:** whoever runs the next pair.
 - **Status:** fixed, unverified against real execution.
+
+### R-014: The dedicated Stage 2 account is not actually isolated -- the legacy `MMT_TradePannel_Pro` EA is
+live-trading on it
+- **Raised:** 2026-09-18, discovered by chance in a pasted Experts log excerpt (a `MMT_TradePannel_Pro`
+  `[PGUI] UPDATE CAG` line for `pair=2`, timestamped 10 minutes before a self-test run on the same VPS
+  terminal, same `XAUUSD.vx,H1` chart) -- not found by any deliberate check this project had in place.
+  **Confirmed by the account owner, 2026-09-18: the legacy bot is attached and currently has 2 pairs open on
+  the same account used for Stage 2.**
+- **Cause:** `35_1000_USD_LIVE_TEST_PLAN.md` §7's precondition -- "a separate, dedicated live account...
+  with no other positions... removes any interaction between the harness's margin guard and positions it
+  does not control" -- was never actually true, or stopped being true at some point before this was
+  discovered. Nothing in this project's own pre-flight checklist or per-pair procedure (§8.1.2, §8.1.3) checks
+  for *other EAs* being attached to the same account; `StartupReconciling()` only checks for open positions
+  bearing `HarnessStage2_LivePilot.mq5`'s own `InpMagicNumber`, which is correct isolation behavior for THIS
+  EA's own state but provides zero visibility into anything else running on the account.
+- **Consequence:**
+  1. `GuardMarginLevelLogic()` still functions correctly in the sense that it reads real, whole-account
+     `AccountInfoDouble(ACCOUNT_MARGIN)` -- it is not blind to the legacy bot's margin usage. But every margin
+     headroom figure in the design doc (e.g. "≈771% margin level for one pair") was computed and reasoned
+     about as if Stage 2's own pair were the only consumer of margin on this account. Real headroom is lower
+     and can change at any moment from activity this project has no visibility into.
+  2. Stage 2's own loss counters (`g_daily_loss_usd`, `g_cumulative_loss_usd`, capped at `InpMaxCumulativeLossUsd=250`)
+     only ever account for pairs `HarnessStage2_LivePilot.mq5` itself opened and closed. The mandate's real
+     ceiling is **USD 1,000 on the account**, not USD 250 on Stage 2 specifically -- the legacy bot's own P&L
+     on its 2 open pairs is real capital exposure against that same USD 1,000, entirely outside anything this
+     project's guards track or limit.
+  3. **This specific EA is the one this project's own research already found unreliable**, independent of
+     this account-isolation finding: `01_research/06_EXISTING_SYSTEM_RESEARCH.md` documents 408 `OpenLeg FAIL`
+     events in under 50 minutes from `MMT_TradePannel_Pro`, and its own "canonical" file (`best_code.cpp`
+     v3.26) has no retry logic at all. It is currently trading live, unsupervised by this project, with real
+     capital, on the account this trial's entire safety reasoning depends on being clean.
+- **Severity:** high -- not because anything this project built is unsafe in isolation, but because the
+  precondition the whole Stage 2 risk posture was reasoned against (`§7`) does not hold, and was not caught
+  by any deliberate check.
+- **Mitigation:** not yet decided by the account owner as of this entry. Recommended: close both of the
+  legacy bot's open pairs and detach it from this account, restoring the isolation `§7` already assumed.
+  If that is not done, `35_1000_USD_LIVE_TEST_PLAN.md` §7 and every margin/budget figure derived from it need
+  to be corrected to describe a shared, non-isolated account explicitly, rather than silently continuing on
+  an assumption already known to be false.
+- **Trigger/metric:** confirm via a fresh `PositionsTotal()`/`PositionSelectByTicket()` sweep (not just this
+  EA's own magic-number-filtered view) whether any non-Stage-2 position remains open on this account, before
+  trusting §7's isolation claim again.
+- **Owner:** the account owner.
+- **Status:** open, confirmed, unmitigated.
 
 ---
 
