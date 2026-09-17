@@ -4,7 +4,7 @@ Every `arb-*` skill loads this first. It exists so a session starts informed ins
 project already established.
 
 **This file is a cache, not source of truth.** `docs/` wins on every conflict. If something here contradicts a
-document, the document is right and this file is stale — fix it. Last synced: **2026-09-16**.
+document, the document is right and this file is stale — fix it. Last synced: **2026-09-18**.
 
 ---
 
@@ -14,13 +14,22 @@ document, the document is right and this file is stale — fix it. Last synced: 
 |---|---|
 | Economics | **NOT PASSED** — but see D-006: one structure is now definitively rejected |
 | Design | **NOT PASSED** — `20_SYSTEM_ARCHITECTURE.md`, `22_STATE_MACHINE.md` are PROPOSED/uncalibrated |
-| Implementation | **NOT PASSED for the production system** — `src/` is empty and stays empty. **D-008's measurement instrument is a stated exception**: `measurement_harness/HarnessStage0_DryRun.mq5` is verified (12/12), `HarnessStage2_LivePilot.mq5` compiles clean and places real orders but has never run. D-008 accepted 2026-09-17. See `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §12. |
+| Implementation | **NOT PASSED for the production system** — `src/` is empty and stays empty. **D-008's measurement instrument is a stated exception**: `measurement_harness/HarnessStage0_DryRun.mq5` verified (12/12). `HarnessStage2_LivePilot.mq5` has run **2 of 10 required Stage 2 pairs successfully** (2026-09-17), both `COMPLETED`, R-011 (realized-P&L tracking) fixed and verified against a real pair. `HarnessStage2_Guards.mqh`/`HarnessStage2_SelfTest.mq5` provide pure-logic test coverage, 12/12 PASS confirmed by real execution 2026-09-17. **2026-09-18: a fast-market/stale-quote guard (R-004) was added** (`GuardFastMarketLogic`, `GuardFastMarket`), compiled clean, replay-tested against the real 2026-09-11 anomaly in the self-test (G17) — **not yet run for real**. D-008 accepted 2026-09-17. See `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §12. |
+| Stage 3/4 (automated scheduler) | **REJECTED / NOT READY** — `/arb-risk-review` (REJECT) and `/arb-hostile-review` (NOT READY), 2026-09-17, on the same finding: no guard existed against a cross-leg stale-quote/fast-repricing event (now partially addressed, see above, but Stage 3/4 itself needs 6 more mitigations and a full re-review — `35_1000_USD_LIVE_TEST_PLAN.md` §8.2). Do not treat Stage 3/4 as available regardless of Stage 2's own progress. |
 
 Full picture, always current: **`docs/ROADMAP.md`**. Read it before answering any "what next" question.
 
-Mandated doc tree is 41 files; 17 exist, 12 have content. `02_quant/15_SIGNAL_RESEARCH.md` is **missing** and is
-the current critical path. `01_research/01`–`05` are empty stubs. `04_testing/`, `05_development/`,
-`06_operations/` are entirely empty.
+Mandated doc tree is 41 files; 17 exist, 12 have content. `02_quant/15_SIGNAL_RESEARCH.md` is **still missing**
+and is the current critical path for the strategy/economics gate specifically — **not** the same as "no work
+exists" (see below). `01_research/01`–`05` are empty stubs. `04_testing/` has real, extensive content
+(`34_DEMO_TEST_PLAN.md`, `35_1000_USD_LIVE_TEST_PLAN.md`) — **not empty**, corrected 2026-09-18. `06_operations/`
+has `PHASE_GRADUATION_CRITERIA.md` — **not empty**, corrected 2026-09-18. `05_development/` is still empty.
+
+**A candidate A4 signal proposal exists but is not accepted:** `docs/Gold-Basis-EA-Strategy-and-System-Design.md`
+(external proposal, tracked 2026-09-18) — `/arb-hostile-review` verdict NOT READY as a basis for adoption; its
+central premise (residual mean-reversion) has partial supporting measurement now (`12_FAIR_VALUE_MODEL.md`
+"Residual dispersion and reversion," 2026-09-18) but no net-of-cost expected-value evidence. Its architecture
+sections are a credible reference regardless. Do not treat this as filling the `15_SIGNAL_RESEARCH.md` gap.
 
 ## The decisive finding (2026-09-16) — do not re-derive this
 
@@ -58,7 +67,7 @@ std. See `17_EXPECTED_VALUE.md`.
 | Round trip, 0.01/0.01 | **USD 0.4975** | spread USD 0.3975 + futures commission USD 0.10 |
 | Spot commission | USD 0.00 | live deal history |
 | Futures commission | USD 10/lot round trip → USD 0.10 at 0.01 | |
-| Spot swap | −60 pts/day long, +40 short; ×3 Wednesdays | futures swap disabled |
+| Spot swap | −60 pts/day long, +40 short; ×3 Wednesdays, giving a ×9/7 weekly average | futures swap disabled. The ×9/7 convention matches standard MT5 triple-swap practice (compensating for two weekend nights with no separate charge, not double-counting them) and this project's own `14_TRANSACTION_COST_MODEL.md` marks the Wednesday triple-charge as *Sourced*, not assumed — but an external proposal (`docs/Gold-Basis-EA-Strategy-and-System-Design.md` §4.3, 2026-09-18) disputes it. Treat as **needing reconciliation against the actual broker charging schedule**, not settled either way by this note |
 | Combined margin, 1 pair | ≈USD 129.67 | 0.01/0.01 |
 | Quote skew | p95 **387 ms**, p99 460 ms | 400 ms is a *candidate*, not approved |
 | Contract size | 100 for **both** legs | why 0.01/0.01 is delta-flat (D-002) |

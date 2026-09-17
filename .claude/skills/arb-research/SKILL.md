@@ -39,10 +39,18 @@ Update one primary research document. Include objective, evidence, formulas with
 
 Do not invent broker specifications or magic thresholds. End with the smallest next empirical test.
 
-## What is already established (do not re-derive)
+## What is established, and when to reopen it (updated 2026-09-18)
 
 See `.claude/skills/PROJECT_STATE.md` for the measured constants, the decisive D-006 finding, and the
-canonical 5.8M-row dataset. Key methodological lessons earned here:
+canonical 5.8M-row dataset. Do not silently re-run an established measurement out of habit — but **do reopen
+a finding when the request specifically challenges its assumptions or arithmetic**, and say plainly whether
+the challenge holds up or not. Two examples so far: `12_FAIR_VALUE_MODEL.md` "Residual dispersion and
+reversion" (2026-09-18) reopened whether the carry-baseline residual has measurable dispersion/opportunity —
+it did, refuting a specific speculative concern rather than just re-confirming the original finding. A
+proposal's swap-calendar critique (`docs/Gold-Basis-EA-Strategy-and-System-Design.md` §4.3) was checked
+against MQL5's own triple-swap documentation rather than accepted or dismissed on authority alone. Re-deriving
+on request is not the failure mode this section originally guarded against; *accepting an unchallenged
+re-assertion of a wrong number* is. Key methodological lessons earned here:
 
 - **Model the revenue term, not just costs.** The EV model's sign was wrong for weeks because it compared
   costs against the basis *level* instead of its *change*. Before reporting any edge, ask what quantity the
@@ -54,9 +62,24 @@ canonical 5.8M-row dataset. Key methodological lessons earned here:
   capturable.
 - The ~23% residual over SOFR may be broker CFD markup rather than mispricing. No second broker's quotes
   exist, so this cannot be settled — say so rather than implying edge.
+- **A number marked "Sourced" in `docs/` can still be worth re-verifying if an external, specific critique
+  arrives** — check it against a primary source before accepting or rejecting the critique, don't just trust
+  whichever side asserted more confidently. The swap-calendar item above is currently flagged for
+  reconciliation, not settled, precisely for this reason.
+
+## Feasibility / strategy-comparison requests
+
+When asked "is this strategy feasible" or to compare candidate approaches (not just measure one thing):
+deliver a comparison table of candidate mechanisms with what each one's edge would actually come from, its
+main weakness, and a design/economic recommendation — not just a single measurement. Distinguish "useful
+model/representation" from "proven edge" explicitly for each candidate; a technique can be a legitimate
+building block (e.g. a robust z-score, a Kalman baseline) without itself establishing that a profitable
+signal exists. End with a decision or a clearly stated recommendation, not just an open question, when the
+request was framed as a feasibility judgment call.
 
 ## Reproduction
 
 `tools/tick_export_loader.py` (terminal exports, offline) and `tools/mt5_data_collector.py --ticks` (live API)
-produce identical column semantics. `tools/q3_q4_research.py` does decay/anomaly/fair-value analysis.
+produce identical column semantics. `tools/q3_q4_research.py` does decay/anomaly/fair-value analysis, plus
+(added 2026-09-18) `analyze_residual_reversion()` for carry-baseline residual dispersion/reversion.
 Cross-validated: quote skew p95 387 ms (export) vs 384 ms (API).

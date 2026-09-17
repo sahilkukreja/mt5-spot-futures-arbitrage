@@ -9,7 +9,10 @@ edit skills here directly so they never drift out of sync.
 - `/arb-research` handles market, instrument, data, and quantitative research.
 - `/arb-design` produces system, execution, state, recovery, and observability designs.
 - `/arb-risk-review` challenges capital, exposure, margin, and operational safety.
-- `/arb-implement` is unavailable until the design gate passes, then performs bounded implementation work.
+- `/arb-implement` is unavailable for the production EA (`src/`) until its design gate passes; the
+  quarantined measurement harness (`measurement_harness/`) is a separate, already-accepted exception (D-008)
+  with its own per-stage status — check `.claude/skills/PROJECT_STATE.md` rather than assuming either is
+  closed or open by default.
 - `/arb-hostile-review` tries to invalidate economics and architecture before implementation or live-stage graduation.
 - `/arb-doc-sync` keeps `docs/DECISION_LOG.md`, `docs/ASSUMPTIONS.md`, `docs/OPEN_QUESTIONS.md`, and
   `docs/RISK_REGISTER.md` in sync after a validated change, without rereading or rewriting the whole doc tree.

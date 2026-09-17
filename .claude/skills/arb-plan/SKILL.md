@@ -39,19 +39,39 @@ Return:
 
 Do not solve the routed task unless explicitly asked. Never authorize live trading or silently advance a phase.
 
-## Project-specific routing (2026-09-16)
+## Project-specific routing (2026-09-18)
 
-`docs/ROADMAP.md` is the authoritative gate status and staged plan. Read it before answering "what next".
+`docs/ROADMAP.md` is the authoritative gate status and staged plan. Read it before answering "what next", and
+also check `.claude/skills/PROJECT_STATE.md`'s gate-status table for the current, dated position — this
+section is a routing pattern, not a status snapshot, and will go stale exactly the way it already has once
+before (it previously said the harness was "not approved" and unimplemented after D-008 had already accepted
+it and pairs had already run — corrected 2026-09-18). **Route to the next unmet requirement, checked fresh
+each time, not to a fixed position in the list below.**
 
-Current critical path: **`02_quant/15_SIGNAL_RESEARCH.md` does not exist**, and it is the only thing that can
-establish whether an intraday edge exists. D-006 (proposed) rejects the hold-to-convergence structure, so any
-plan that assumes overnight basis convergence is already answered — do not re-plan it.
+Current critical path for the economics/strategy gate: **`02_quant/15_SIGNAL_RESEARCH.md` does not exist.**
+D-006 rejects the hold-to-convergence structure, so any plan that assumes overnight basis convergence is
+already answered — do not re-plan it. A candidate proposal exists (`docs/Gold-Basis-EA-Strategy-and-System-
+Design.md`, reviewed `NOT READY` 2026-09-18) but is not accepted and does not fill this gap by existing.
 
-The circular dependency to be aware of when routing: EV cannot close without slippage, slippage needs
-execution, execution needs a passed design gate, and the design gate needs EV. The proposed break is a
-**measurement-only harness** (demo, no signal logic, bounded runs). It is not approved; route it through
-`/arb-risk-review` and `/arb-hostile-review` before any code.
+**The circular dependency, and how it actually breaks — corrected 2026-09-18:** EV cannot close without
+slippage, slippage needs execution evidence, execution needs a passed design gate, and the design gate needs
+EV. The break is the **measurement-only harness** (`measurement_harness/`, D-008, quarantined, zero signal
+logic, zero profit objective) — **this is no longer a proposal.** It is accepted, reviewed, and partially
+executed: Stage 0 verified (12/12), Stage 2 has 2 of 10 required pairs completed successfully, and a fast-
+market guard (R-004) is implemented and replay-tested but not yet run for real. **Stage 3/4 (the automated
+scheduler) remains `REJECT`/`NOT READY`** — two full reviews, 2026-09-17, on the same finding; do not treat it
+as available regardless of Stage 2's progress. Check `PROJECT_STATE.md`'s gate table for the current pair
+count before answering anything about harness status.
 
-When someone asks to "build the EA": the honest route is A4 (signal research), then harness design, then
-risk/hostile review, then harness implementation, which closes B1, which closes EV, which opens the design
-gate, which permits the EA. Say which step is actually next rather than refusing or jumping ahead.
+**Correction, 2026-09-18: harness execution evidence informs B1 (slippage measurement); it does not
+automatically close EV.** Completing Stage 2 (or even Stage 3/4, once unblocked) produces a slippage/latency
+distribution — a necessary input to `17_EXPECTED_VALUE.md`, not a sufficient one. EV also needs A4 (signal
+research, still missing) and a net-of-cost expected-value calculation that has not been done for any specific
+signal, because no signal has cleared review yet. Do not imply that finishing the harness alone opens the
+design gate.
+
+When someone asks to "build the EA": identify which of these is actually the next unmet step — A4 signal
+research (missing), harness execution (in progress, 2/10 Stage 2 pairs), Stage 3/4 unblocking (blocked on 6
+mitigations, `35_1000_USD_LIVE_TEST_PLAN.md` §8.2), or EV closure (blocked on both A4 and full slippage
+evidence) — and say which one, with its current dated status. Do not recite the whole chain as if it always
+starts from the beginning; most of it has already moved.

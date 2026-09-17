@@ -54,19 +54,54 @@ These are earned evidence, not suggestions. Carry them into every design documen
 - **Rollover is a design requirement.** This account's symbol universe is exactly 2 symbols. There is **no
   successor contract month to roll into**, and `GC-Z26.expiration_time` reads 0 — no machine-readable expiry.
   The system cannot assume a successor symbol will appear (R-005).
-- **A spread gate is unusually cheap here.** Both legs quote at a near-fixed floor (spot p99 = median = USD 0.15)
-  with a rare violent tail (spot max USD 12.15). Rejecting entry above roughly 2x median would reject well under
-  1% of ticks and eliminate the tail. Derive the actual threshold; do not adopt that number.
-- **Skew alone has a confirmed blind spot.** The R-004 anomaly's own skew was 238 ms — inside the 400 ms
-  candidate. A per-leg price-velocity check is a better-targeted complementary signal, but one extreme event
-  is not enough to derive a threshold.
+- **A spread gate is cheap, but it cannot eliminate the execution tail — corrected 2026-09-18.** Both legs
+  quote at a near-fixed floor (spot p99 = median = USD 0.15) with a rare violent tail (spot max USD 12.15).
+  Rejecting entry above roughly 2x median rejects well under 1% of ticks and is worth having, but it does
+  **not** catch the specific failure mode that matters most: the confirmed 2026-09-11 13:30 UTC R-004 anomaly
+  had a **normal, narrow spread on both legs** throughout — futures repriced ~54 points in ~10 seconds while
+  spot stayed frozen at an unremarkable spread. A spread gate alone would have passed that event straight
+  through. Both `/arb-risk-review` and `/arb-hostile-review` rejected `35_1000_USD_LIVE_TEST_PLAN.md` §8.2 on
+  exactly this finding, 2026-09-17. Design any spread-based guard as one layer among several, not the tail
+  defense.
+- **Skew alone has a confirmed blind spot; velocity is what actually catches it — mitigation implemented
+  2026-09-18.** The R-004 anomaly's own skew was 238 ms — inside the 400 ms candidate. Per-leg price velocity
+  is the layer that actually catches it (the anomaly's futures leg moved at 161.6 pts/sec, ~20x the measured
+  p99.9 of 8.08 pts/sec). A working implementation exists —
+  `HarnessStage2_Guards.mqh`'s `GuardFastMarketLogic()`, real-tick-history wrapper `GuardFastMarket()` in
+  `HarnessStage2_LivePilot.mq5` — replay-tested against the actual recorded anomaly (self-test G17), compiled
+  clean, **not yet exercised against a real broker connection.** Reference this before redesigning a fast-
+  market guard from scratch; do not treat this as still a from-abstract design problem.
 - **The strategy being designed for has changed.** D-006 rejects hold-to-convergence.
   `20_SYSTEM_ARCHITECTURE.md` and `22_STATE_MACHINE.md` were sketched for that structure and need re-reading
   against an intraday, signal-driven one.
 
-## The measurement harness
+## The measurement harness — corrected 2026-09-18, no longer a proposal
 
-The first legitimate MQL5-shaped artifact is a **measurement-only harness**: demo account, no signal logic,
-opens a hedged 0.01/0.01 pair on a fixed trigger and flattens immediately, bounded run count, hard kill switch,
-output is a slippage/latency distribution rather than P&L. Its code is a research instrument and must not be
-reused as a system component. It is **not approved** — it needs `/arb-risk-review` and `/arb-hostile-review`.
+The measurement-only harness is not a future design item: it is **accepted (D-008, 2026-09-17), reviewed, and
+partially executed.** `measurement_harness/` — quarantined, zero signal logic, zero profit objective — has
+Stage 0 verified (12/12, simulated broker) and Stage 2 (live, single-pair manual trigger) at **2 of 10
+required pairs, both `COMPLETED`**, on a real account. Its code remains a research instrument and must not be
+reused as a system component (same quarantine rule as `legacy/`) — that boundary hasn't changed, only its
+implementation status has. Check `.claude/skills/PROJECT_STATE.md`'s gate table for the current pair count
+before describing this as unapproved or undesigned; it was designed, reviewed, and is now producing real
+execution evidence.
+
+**Stage 3/4 (the automated multi-pair scheduler) is a separate, still-blocked item** — `REJECT`/`NOT READY`
+from both reviews, 2026-09-17 (`35_1000_USD_LIVE_TEST_PLAN.md` §8.2), pending 6 more mitigations and a full
+re-review. Do not conflate "the harness is approved and running" with "the automated scheduler is available."
+
+**Design coverage this project's own real execution has already found necessary, not hypothetical** — any
+future execution-design work should explicitly address these, since each one is tied to a real, either
+already-encountered or already-analyzed failure mode, not a generic checklist item:
+- **Frozen prices / stale quotes on one leg** — the R-004 anomaly's actual signature; a spread gate alone
+  does not catch it (see above).
+- **Asynchronous fills and partial exits** — `HarnessStage2_LivePilot.mq5`'s `ExecuteLeg()`/
+  `CloseLegByTicket()` already distinguish `LEG_FILLED`/`LEG_PARTIAL`/failure paths; a real bug here (the
+  `LEG_PARTIAL` branch not checking flatten success) was found and fixed 2026-09-17, caught on review, not
+  from a failure — reference `RISK_REGISTER.md` R-011 before assuming this class of bug is already fully
+  covered elsewhere.
+- **Two-symbol event handling** — MT5's `OnTick` only wakes on the attached chart's symbol; a design that
+  assumes both legs' price changes are observed symmetrically is wrong by construction.
+- **Deadline/session-boundary exits** — closing before a trading boundary, not just entering after checking
+  one; `HarnessStage2_LivePilot.mq5`'s expiry/session guards are pre-trade checks only, not exit-side
+  deadline enforcement, and that gap is real, not yet built.

@@ -40,11 +40,29 @@ Do not load the entire repository or prior bot. Use repository search to locate 
 
 State the approved behavior, bounded implementation plan, files changed, tests added, failure paths exercised, and remaining risks. Run the narrowest meaningful tests first, then relevant integration/fault tests. Do not claim broker behavior was tested without evidence from that environment.
 
-## Project-specific implementation notes
+## Project-specific implementation notes (updated 2026-09-18 — check authorization per component/stage, not as one global gate)
 
-**The gate is currently closed.** No component has a `READY` design verdict. `src/` is empty and stays empty.
-The only implementation work that could be authorized soon is the **measurement-only harness** described in
-`arb-design` — and only after `/arb-risk-review` and `/arb-hostile-review` clear it.
+**The production EA gate remains closed, without exception.** `src/` is empty and stays empty. No component of
+a signal-driven production strategy has a `READY` design verdict; `02_quant/15_SIGNAL_RESEARCH.md` (A4) does
+not exist. This restriction is never lifted by the measurement harness's own progress below — the two are
+separate authorizations and must stay separate.
+
+**The measurement harness (`measurement_harness/`) is a stated, bounded exception (D-008, accepted
+2026-09-17) — check its current per-stage status before saying it's unauthorized:**
+- **Stage 0** (simulated broker, `HarnessStage0_DryRun.mq5`): verified, 12/12 PASS.
+- **Stage 2** (live, single manual-triggered pair, `HarnessStage2_LivePilot.mq5`): authorized and **running**
+  — 2 of 10 required pairs completed successfully as of this writing. Its pure guard logic
+  (`HarnessStage2_Guards.mqh`) has its own self-test (`HarnessStage2_SelfTest.mq5`), 12/12 PASS confirmed by
+  real execution. A fast-market guard (R-004) was added 2026-09-18, compiled clean, replay-tested, not yet
+  run for real — check `PROJECT_STATE.md` for the current count before assuming any of this is still 0/10 or
+  unimplemented.
+- **Stage 3/4** (automated multi-pair scheduler): **`REJECT`/`NOT READY`** from both reviews, 2026-09-17
+  (`35_1000_USD_LIVE_TEST_PLAN.md` §8.2) — explicitly not authorized regardless of Stage 2's own progress.
+  6 mitigations and a full re-review remain outstanding.
+
+Check `.claude/skills/PROJECT_STATE.md`'s gate table and `docs/ROADMAP.md` for the current dated status before
+telling anyone a component is unauthorized — this section went stale once already (it previously said the
+harness itself needed authorization it had already received) and will again; verify, don't recite.
 
 `tools/` is different: read-only research scripts are permitted and expected. They never place, modify, or
 close an order. When working there:

@@ -48,3 +48,19 @@ Sweeps have repeatedly found these; check them specifically:
 
 When a finding inverts a prior conclusion, prefer marking the old text **superseded with the reason** over
 deleting it. The error is often more instructive than the correction.
+
+## Sweep the skill files themselves, not just `docs/` (added 2026-09-18)
+
+`.claude/skills/*/SKILL.md`'s own "Project-specific ..." sections are exactly as capable of going stale as
+any document in `docs/`, and by 2026-09-18 all seven had — describing an unapproved demo harness after D-008
+accepted it and 2 real pairs had already run, repeating a disputed swap figure as settled, saying "no
+component has an approved design" while the measurement harness had one. **When syncing after a material
+change, check whether any `SKILL.md`'s dated project-specific section now contradicts it, not only `docs/`.**
+
+**Prefer routing to `PROJECT_STATE.md` over restating a number inside a workflow-instruction skill.** A
+skill's own "Project-specific inputs" section should explain *what to check and why it matters*
+(e.g., "check the current Stage 2 pair count before calling the harness unauthorized") rather than hardcoding
+the count itself — the count belongs in `PROJECT_STATE.md`, updated once, read by every skill. Duplicated
+"current" facts across multiple skill files is the specific failure mode that caused the 2026-09-18 sweep;
+each occurrence found during that sweep is now phrased as "check X, it may have changed" rather than
+re-asserting a fixed number, and new skill content should follow the same pattern.
