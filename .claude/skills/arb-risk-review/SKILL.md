@@ -64,11 +64,11 @@ guard implementation status is from 2026-09-18).
 A pre-trade budget check (e.g. `InpMaxTradeLossUsd`) only blocks the *next* fire if a projected worst case
 exceeds it; it does not cap what an *already-open* trade can lose in real time, and inputs like
 `InpAckTimeoutMs`/`InpFillTimeoutMs`/`InpOrphanTimeoutMs` in `HarnessStage2_LivePilot.mq5` are currently
-**declared but never referenced in any logic** (confirmed by grep, 2026-09-17) — the ~$4.85 orphan-exposure
-figure `InpMaxTradeLossUsd`'s own justification depends on describes a wait-then-flatten mechanism that does
-not exist in code; the actual behavior is an immediate flatten with no timeout window at all. Verify a cited
-timeout/limit is actually wired into logic, not just declared as an input, before trusting its derived dollar
-figure.
+**declared but never referenced in any logic** (confirmed by grep, 2026-09-17, recorded `RISK_REGISTER.md`
+R-013, 2026-09-18) — the ~$4.85 orphan-exposure figure `InpMaxTradeLossUsd`'s own justification depends on
+describes a wait-then-flatten mechanism that does not exist in code; the actual behavior is an immediate
+flatten with no timeout window at all. Verify a cited timeout/limit is actually wired into logic, not just
+declared as an input, before trusting its derived dollar figure.
 
 **R-004 (stale-quote/fast-repricing) status, 2026-09-18 — check before re-flagging as unaddressed:** a
 velocity/quote-age/cross-leg-skew guard now exists (`GuardFastMarketLogic()` in `HarnessStage2_Guards.mqh`,

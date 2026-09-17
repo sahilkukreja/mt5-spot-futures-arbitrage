@@ -113,6 +113,13 @@ stress multiplier?
   This is a real methodological finding, not just more data: a short-window decay-proxy estimate should not be
   trusted without testing it at a longer window first. The evidence remains too small and too method-limited
   to support a durable conclusion about multi-week holding-period behavior.
+  - **Partial de-trended follow-up, 2026-09-18** (a related but distinct measurement from the proposed one
+    above): `12_FAIR_VALUE_MODEL.md` "Residual dispersion and reversion" measures the AR(1) half-life of the
+    carry-*baseline-adjusted residual* `x_t` (not the raw basis, and not literally the rate series itself as
+    proposed above). Same instability signature recurs: half-life estimate grows from ≈68 min at a 1-min grid
+    to ≈1,232 min at a 240-min grid. This is consistent with, not a resolution of, the withdrawal above — it
+    extends the same caution to the residual too, and uses a fixed (not lagged/rolling) `r_hat`. The
+    originally proposed rate-series AR(1) re-implementation is still not done.
 
 ## From the project mandate (first milestone)
 

@@ -509,6 +509,40 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
 - **Owner:** the account owner.
 - **Status:** open -- mitigated procedurally (single-environment rule), not resolved in code.
 
+### R-013: `InpAckTimeoutMs`/`InpFillTimeoutMs`/`InpOrphanTimeoutMs` are declared but never enforced in code
+- **Raised:** 2026-09-17, found while self-hostile-reviewing a risk-review recommendation to continue Stage 2
+  pairs 3-10; not yet recorded as its own entry until this doc-sync pass.
+- **Cause:** `grep -n "InpAckTimeoutMs\|InpFillTimeoutMs\|InpOrphanTimeoutMs" HarnessStage2_LivePilot.mq5`
+  returns only each input's own declaration line -- none of the three is referenced anywhere else in the
+  file. `ExecuteLeg()`'s retry loop is bounded only by `InpMaxOpenRetries` (which *is* wired in); nothing
+  bounds total elapsed wall-clock time across retries. `RunOnePair()`'s leg-2-failure rollback calls
+  `CloseLegByTicket()` on leg 1 **immediately**, synchronously, with no wait -- there is no wait-then-flatten
+  mechanism for `InpOrphanTimeoutMs` to actually gate.
+- **Consequence:** `InpMaxTradeLossUsd=15`'s own stated justification (`35_1000_USD_LIVE_TEST_PLAN.md` §6)
+  is round-trip cost (~$0.50) + **worst-case orphan exposure (~$4.85, derived from `InpOrphanTimeoutMs=3000`)**
+  + headroom. That derivation describes a mechanism the code does not implement. Either real orphan exposure
+  is smaller than documented (immediate flatten, no 3-second window -- the more likely reading of the actual
+  code) or the intended wait-then-flatten behavior was never wired up and the $4.85 figure is not describing
+  what actually happens either way. Nobody has verified which. Separately, no code-level ceiling bounds total
+  wall-clock time across a multi-attempt retry sequence (`InpAckTimeoutMs`/`InpFillTimeoutMs` unenforced),
+  which matters for R-004: every real pair run so far (n=2) took a single attempt on every leg, so this
+  project has zero evidence of how long a retried pair actually stays exposed, and therefore zero evidence
+  for or against the "sub-second exposure keeps Stage 2 safe from an R-004-class event" reasoning used to
+  approve continuing pairs 3-10 (2026-09-17 risk-review discussion).
+- **Severity:** medium -- does not indicate unsafe code as currently written (immediate-flatten is arguably
+  more conservative than a delayed one), but a documented risk-control number (`InpMaxTradeLossUsd`'s
+  derivation) does not match what the code actually does, and this project's own standard is that a risk
+  figure's derivation must be verified against real code, not assumed from an input's name.
+- **Mitigation:** not yet done. Either (a) wire up real ack/fill/orphan timeout enforcement matching the
+  documented derivation, or (b) correct `35_1000_USD_LIVE_TEST_PLAN.md` §6's `InpMaxTradeLossUsd` derivation
+  to describe the immediate-flatten behavior the code actually has, and remove or repurpose the three unused
+  inputs. Either is a same-day fix; neither has been done.
+- **Trigger/metric:** re-derive `InpMaxTradeLossUsd`'s justification directly from `RunOnePair()`'s actual
+  code path before citing the $4.85 figure again, and/or the next pair that requires a real leg-open retry
+  (none has yet) to observe actual multi-attempt elapsed time.
+- **Owner:** whoever next touches `HarnessStage2_LivePilot.mq5`'s timeout/retry logic.
+- **Status:** open, unmitigated.
+
 ---
 
 No further risks recorded yet.
