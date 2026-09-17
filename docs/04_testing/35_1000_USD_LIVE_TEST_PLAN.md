@@ -408,23 +408,71 @@ input setting.
 **On failure:** return to design/Stage 0–1. Stage 3's 200-pair automated run does not begin from a Stage 2
 that needed a workaround to pass.
 
-## 8.2 Stage 3/4 — operational procedure (design draft, 2026-09-17 — not reviewed, not authorized)
+## 8.2 Stage 3/4 — operational procedure (design draft, 2026-09-17 — `/arb-risk-review` REJECT, `/arb-hostile-review` NOT READY)
 
-**Status: first draft only.** Stage 2 has completed 2 of its required 10 pairs as of this writing (§8.1.4 is
-not yet met). This section exists so Stage 3/4's design can be thought through and reviewed ahead of time,
-the same way Stage 2's design (§8.1) was written, risk-reviewed, and hostile-reviewed *before* a single line
-of `HarnessStage2_LivePilot.mq5` was written — not so it can be implemented now. **Two separate gates stand
-between this section and any code:**
+**Status: reviewed, rejected in current form, revision required.** Stage 2 has completed 2 of its required 10
+pairs as of this writing (§8.1.4 is not yet met). This section exists so Stage 3/4's design can be thought
+through and reviewed ahead of time, the same way Stage 2's design (§8.1) was written, risk-reviewed, and
+hostile-reviewed *before* a single line
+of `HarnessStage2_LivePilot.mq5` was written — not so it can be implemented now. **Three gates stand between
+this section and any code, one of them now failed and requiring a revision:**
 
 1. **Stage 2 must reach its own exit criteria (§8.1.4) — 10/10 pairs, not 2/10 — and the operator must
    explicitly write `stage2_confirmed.flag` (T20).** No input setting, code change, or argument overrides
    this; it is a deliberate manual sign-off action, never something the harness or this document does for
    itself.
-2. **This section itself has no risk-review or hostile-review verdict.** §8's own status line already says so:
-   "no verdict on Stage 3/4, which requires its own review once Stage 2's results exist." Writing this draft
-   does not satisfy that — it is what gets reviewed, not a substitute for review. `/arb-risk-review` and
-   `/arb-hostile-review` must both run against this section, with their conditions applied, before any
-   `HarnessStage3Stratum*.mq5` file is written, exactly as happened for Stage 2.
+2. **`/arb-risk-review` and `/arb-hostile-review` both ran against this section, 2026-09-17. Verdicts: REJECT
+   and NOT READY respectively.** Both converged independently on the same core finding: automating firing
+   removes the human safety net that currently substitutes for a guard that does not exist in code at either
+   stage. See "Review findings, 2026-09-17" below for the full list. **This section requires a revision
+   addressing those findings before either review can be re-run.**
+3. **The revision itself must then pass both reviews again**, exactly as Stage 2's design did before any of
+   its code was written.
+
+### Review findings, 2026-09-17 — blocking, must be addressed in a revision
+
+Both reviews are recorded here in full rather than only in chat, per this project's own standing practice
+(every prior review's conditions were applied directly to the document they reviewed, not left implicit).
+
+**The blocking finding, found independently by both reviews:** `GuardSpreadLogic()` in
+`HarnessStage2_Guards.mqh` checks only each leg's own bid-ask spread — it has no cross-leg basis check and no
+quote-age/velocity check. It would not have caught the R-004 anomaly (2026-09-11 13:30:11 UTC: futures
+repriced 54 points in ~10 seconds while the spot leg's ask stayed frozen and its own spread stayed narrow —
+stale, not wide). `RISK_REGISTER.md` uses that same event to compute a worst case of **≈$54, 5.4% of capital,
+from one ordinary fast-market sequence in a quiet 7-day sample.** `InpMaxTradeLossUsd=15` was explained in §6
+as covering round-trip cost plus worst-case orphan exposure (~$4.85) — an honest explanation for a context
+where a human is watching every pair (Stage 2), but it was never sized against this tail, and $15 does not
+cover $54. Stage 2 survives this gap only because a human is present and the operational window is
+deliberately scheduled away from Friday/~13:30 UTC (§8.1.1). Stage 3/4 removes the human and, by stratum A's
+own design intent (an *unconditional* reference distribution), cannot simply avoid that window without
+biasing the very thing it exists to measure.
+
+Required mitigations, in priority order:
+
+1. **A real-time quote-age/velocity or cross-leg-skew guard**, sized and tested against the 2026-09-11
+   anomaly specifically — proven against that historical row, not designed in the abstract. Nothing else on
+   this list matters if this isn't built.
+2. **A weekly drawdown limit**, separate from the existing daily/cumulative ones — named in this project's own
+   risk-review inputs (legacy taxonomy: daily-loss-percent *plus* a separate weekly drawdown percent) and
+   more relevant here than at Stage 2's single-session scale.
+3. **Fix the budget-guard code claim.** §8.2.1 originally asserted `GuardBudgetsLogic()` "needs no new logic"
+   for dual stratum quotas. On inspection this is wrong: the function takes one `pairs_total`/`InpMaxPairs`
+   ceiling, and stratum A (200) and stratum B (100) need two independent, non-blocking quotas. This needs
+   either two guard calls or a parameterized version — a real code change, not a reuse.
+4. **The stratum B sampling-weight formula**, currently undefined — blocks T15 (sampling-weight integrity)
+   regardless of the safety findings above; a missing critical input on its own.
+5. **A minimum inter-fire spacing/cooldown for stratum B**, to prevent a single fast-market event from
+   producing a burst of autocorrelated fires that inflate n without adding independent information — the same
+   R-004-class event that motivates mitigation 1 is exactly the kind of event that would otherwise cluster
+   stratum B fires.
+6. **Broker terms-of-service check for automated/higher-frequency trading**, not done at any stage of this
+   project so far, and materially more relevant once firing goes from ~10 manual clicks to up to 300
+   automated fires.
+7. **Expiry-timeline feasibility check** — confirm n=300 actually fits before the ~2026-11-11 buffer cutoff,
+   accounting for Stage 2's remaining 8 pairs and this review cycle itself. Not computed anywhere yet.
+
+Once addressed, `/arb-risk-review` and `/arb-hostile-review` both re-run against the revised section — the
+same cycle Stage 2's design went through, not a one-time exception for this stage.
 
 ### 8.2.1 What changes from Stage 2 to Stage 3/4
 
@@ -440,40 +488,28 @@ between this section and any code:**
   `34_DEMO_TEST_PLAN.md`'s D-H4 — every value stays far below any overnight/swap boundary, so D-006 is not
   re-litigated. The draw and the actual realised dwell must both be recorded per pair (not just the target),
   since a guard trip or broker delay could make them differ.
-- **Two independent firing mechanisms running concurrently, not one.** Stratum A's scheduler and stratum B's
-  condition-watcher both need to respect the same concurrency=1 structural guard Stage 2 already uses
-  (`g_state == STATE_IDLE`) — whichever one's trigger condition is met first proceeds; the other's trigger
-  firing at the same instant must be dropped, not queued, same as a double chart-button click today would be
-  ignored while `g_state != STATE_IDLE`.
+- **Two independent firing mechanisms, not one — evaluated within a single-threaded `OnTick()`, not a real
+  concurrency problem.** Stratum A's scheduler and stratum B's condition-watcher both check
+  `g_state == STATE_IDLE` before firing, the same structural guard Stage 2 already uses; MQL5 EAs are
+  single-threaded, so whichever check runs first in code order wins deterministically — there is no race to
+  design around, only an evaluation-order choice to make explicit when this is implemented.
 - **Per-pair record grows two new required fields**, needed by T15 (sampling-weight integrity): `stratum`
   (`A` or `B`), the specific trigger reason if `B` (which of the three OR conditions in §4 fired), and a
-  **sampling weight** — stratum A's is constant (unconditional design), stratum B's must be derived from the
-  empirical trigger-condition frequency (~0.9% of ticks combined, §4) so that reweighting stratum A+B
-  reproduces the full population's covariate distribution. **The exact weight formula is not decided in this
-  draft** — flagged here as an open item for the Stage 3/4 review, not silently assumed.
-- **Budget guards carry the same mechanism, but need a stage-aware ceiling check.** `InpMaxCumulativeLossUsd`
-  (250) and `InpMaxPairsPerDay` (50) are unchanged in mechanism from Stage 2 — `GuardBudgetsLogic()` in
-  `HarnessStage2_Guards.mqh` already handles them generically and needs no new logic. What Stage 3/4 adds is
-  an *operational* check, not a code change: before starting, verify Stage 2's realized cost (currently
-  $0.61 of the $250 cap after 2 pairs) plus Stage 3/4's ≈USD 150 target still leaves headroom under the cap,
-  and re-verify this arithmetic once Stage 2 actually reaches 10/10 (its realized cost is not yet known at
-  n=10).
-- **Unattended operation needs a control Stage 2 doesn't, precisely because Stage 2 was designed to avoid
-  needing one.** §8.1's whole premise is "a human verifies each pair before the next fires" — that premise is
-  gone once firing is automatic. Candidate controls, **none implemented or reviewed yet**:
-  - A heartbeat/dead-man's-switch check: if the journal hasn't been written to within some stated window
-    during an active run, halt and alert rather than continue firing blind.
-  - The same session-boundary guard Stage 0's demo design already specified (`34_DEMO_TEST_PLAN.md`'s
-    `now + max_dwell + margin < session_close`), now load-bearing rather than a nice-to-have, since nothing
-    else stops a pair from firing minutes before close with a 60-second dwell still pending.
-  - **Open question, not resolved here:** should stratum A's randomised schedule *include* the R-004
-    Friday/13:30 UTC anomaly window, or exclude it the way Stage 2's single-pair window deliberately did
-    (§8.1.1)? Excluding it would bias stratum A's "unconditional" distribution low, defeating its purpose as
-    an unbiased reweighting reference (§4); including it means Stage 3/4 may fire directly into a known
-    irregular window unsupervised. This is a genuine design tension, surfaced here for the Stage 3/4 review
-    to resolve — not decided unilaterally in this draft.
-  - A reduced but nonzero operator check-in cadence (not per-pair, but periodic) — the actual interval is
-    also undecided here.
+  **sampling weight**. **Mitigation 4 above (weight formula undefined) blocks this row from being written
+  correctly — not resolved in this draft.**
+- **Budget guards do not carry over unchanged, despite this draft originally claiming otherwise.**
+  `GuardBudgetsLogic()` in `HarnessStage2_Guards.mqh` takes one `pairs_total`/`InpMaxPairs` ceiling; Stage 3/4
+  needs two independent, non-blocking quotas (stratum A stops at 200, stratum B at 100, neither blocks the
+  other). **See mitigation 3 above — this is a real code change**, not a reuse. The operational
+  budget-headroom arithmetic ($0.61 of $250 spent after 2 Stage 2 pairs, ≈$150 target ahead, comfortable
+  headroom) is still correct and not in question — only the per-stratum *counting* mechanism needs to change.
+- **Unattended operation needs controls Stage 2 doesn't, precisely because Stage 2 was designed to avoid
+  needing them.** §8.1's whole premise is "a human verifies each pair before the next fires" — that premise
+  is gone once firing is automatic. A heartbeat/dead-man's-switch (halt if the journal hasn't been written to
+  within a stated window) and the session-boundary guard Stage 0's demo design already specified
+  (`34_DEMO_TEST_PLAN.md`'s `now + max_dwell + margin < session_close`) are both still needed, but **neither
+  addresses the blocking finding above** — see "Review findings" for the actual gap and its required fix.
+  A reduced but nonzero operator check-in cadence is also still undecided.
 
 ### 8.2.2 Pre-flight checklist for Stage 3 start (draft — none of these are satisfied yet)
 
@@ -482,13 +518,17 @@ between this section and any code:**
       plausible band of independently-noted quotes, total realized cost consistent with the ≈USD 5 estimate.
       **Currently 2/10.**
 - [ ] Operator has written `stage2_confirmed.flag` (T20) — deliberate manual action.
-- [ ] `/arb-risk-review` run against this section (8.2), conditions applied.
-- [ ] `/arb-hostile-review` run against this section (8.2), conditions applied.
-- [ ] Sampling-weight formula for stratum B finalised and reviewed (currently undecided, above).
-- [ ] Stratum A's Friday/13:30 UTC inclusion-vs-exclusion question resolved (currently undecided, above).
-- [ ] Unattended-operation controls (heartbeat, session-boundary guard) implemented in code and covered by a
-      Stage-0-style self-test before any real firing — same standard already applied to Stage 2's guards
-      (`HarnessStage2_SelfTest.mq5`).
+- [x] `/arb-risk-review` run against this section (8.2), 2026-09-17 — **REJECT.** Not yet re-run against a
+      revision.
+- [x] `/arb-hostile-review` run against this section (8.2), 2026-09-17 — **NOT READY.** Not yet re-run against
+      a revision.
+- [ ] All 7 required mitigations in "Review findings, 2026-09-17" above addressed in a revision, most load-
+      bearing: the quote-age/velocity/cross-leg-skew guard (mitigation 1) and the weekly drawdown limit
+      (mitigation 2).
+- [ ] Revised section re-reviewed (`/arb-risk-review` + `/arb-hostile-review`) with a passing verdict.
+- [ ] Unattended-operation controls (heartbeat, session-boundary guard, and the new quote-age guard)
+      implemented in code and covered by a Stage-0-style self-test before any real firing — same standard
+      already applied to Stage 2's guards (`HarnessStage2_SelfTest.mq5`).
 - [ ] Remaining budget re-verified against Stage 2's actual realized cost at 10/10, not the 2/10 figure above.
 
 ## 9. Acceptance tests
