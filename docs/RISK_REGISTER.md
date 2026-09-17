@@ -185,6 +185,17 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   from "one observed instance" to "a plausible recurring, roughly-timed event" — see `02_quant/13_BASIS_MODEL.md`
   for the full row-level detail. Possible mitigation candidate: a fixed no-entry window around 13:30 UTC, not
   yet sized or proposed as a number (needs more weeks of data to size responsibly, per `NO MAGIC`).
+- **Update 2026-09-17 — this is now the blocking finding for Stage 3/4's design.** Both `/arb-risk-review`
+  (REJECT) and `/arb-hostile-review` (NOT READY) independently used this exact event to reject
+  `35_1000_USD_LIVE_TEST_PLAN.md` §8.2 in its current form: `GuardSpreadLogic()` checks only each leg's own
+  bid-ask spread, never quote age or cross-leg skew, so it would not have caught this event (the spot leg's
+  own spread stayed narrow — it was stale, not wide). `InpMaxTradeLossUsd=15` does not cover this event's
+  ~$54/5.4%-of-capital worst case. Stage 2 survives this only because a human operator is present and the
+  operational window is deliberately scheduled away from Friday/~13:30 UTC (§8.1.1); Stage 3/4's automated
+  scheduler removes that human and, by stratum A's own design intent, cannot simply avoid the window without
+  biasing the unconditional distribution it exists to measure. See §8.2's "Review findings, 2026-09-17" for
+  the required mitigation (a real-time quote-age/velocity/cross-leg-skew guard, tested against this specific
+  event) before Stage 3/4 can be re-reviewed.
 - **Owner:** Data and execution research
 - **Status:** open
 

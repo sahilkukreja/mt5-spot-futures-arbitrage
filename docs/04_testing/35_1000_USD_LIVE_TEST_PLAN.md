@@ -3,9 +3,11 @@
 Status: **ACCEPTED (D-008, 2026-09-17).** Reviews done, conditions applied, D-008 accepted.
 `measurement_harness/HarnessStage2_LivePilot.mq5` compiles clean; 2 of Stage 2's 10 pairs have run
 successfully (§8.1.4 exit criteria not yet met). Supersedes the live-measurement scope of
-`34_DEMO_TEST_PLAN.md` (D-007), which is reduced to mechanical validation only. **§8.2 (Stage 3/4) is a
-first design draft only — not reviewed, not authorized, gated behind Stage 2 reaching 10/10 and its own
-`/arb-risk-review`/`/arb-hostile-review` cycle.**
+`34_DEMO_TEST_PLAN.md` (D-007), which is reduced to mechanical validation only. **§8.2 (Stage 3/4) has been
+reviewed and rejected in its current form** (`/arb-risk-review` REJECT, `/arb-hostile-review` NOT READY,
+2026-09-17 — see §8.2's "Review findings" for the 7 required mitigations, most load-bearing: no guard exists
+against the R-004-class fast-market event once the human operator is removed). Revision and re-review
+required before implementation, in addition to Stage 2 reaching 10/10.
 
 **Compiling clean does not authorize firing it.** §12's pre-flight checklist is the actual gate, and its one
 remaining open item — live verification of the dedicated account's funding and position count — has not been
