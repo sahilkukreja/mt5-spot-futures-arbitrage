@@ -484,7 +484,16 @@ enum ENUM_LEG_RESULT
 // Queries broker deal history for a deal whose comment matches this
 // exact idempotency key -- the real-API equivalent of Stage 0's
 // simulated-ledger BrokerHasKey(). Used before any retry, per section 7.
-bool BrokerHasKey(const string key, ulong &out_ticket, double &out_price, double &out_volume, long &out_deal_time_msc)
+// BUG FIX (found by pair 1's real execution, 2026-09-17): originally this
+// returned only the DEAL ticket, which was then passed to
+// PositionSelectByTicket() -- wrong in Hedge mode, where that function
+// expects the POSITION ticket. A position's ticket is NOT always equal to
+// the deal ticket that opened it; DEAL_POSITION_ID is the documented,
+// authoritative way to get the position ticket from a deal, and is what
+// this now returns as out_position_ticket, separate from the deal ticket
+// (kept for journal/audit purposes, where the deal is the right unit).
+bool BrokerHasKey(const string key, ulong &out_ticket, double &out_price, double &out_volume,
+                   long &out_deal_time_msc, ulong &out_position_ticket)
   {
    HistorySelect(0, TimeCurrent());
    int total = HistoryDealsTotal();
@@ -499,6 +508,7 @@ bool BrokerHasKey(const string key, ulong &out_ticket, double &out_price, double
          out_price  = HistoryDealGetDouble(ticket, DEAL_PRICE);
          out_volume = HistoryDealGetDouble(ticket, DEAL_VOLUME);
          out_deal_time_msc = (long)HistoryDealGetInteger(ticket, DEAL_TIME_MSC);
+         out_position_ticket = (ulong)HistoryDealGetInteger(ticket, DEAL_POSITION_ID);
          return true;
         }
      }
@@ -507,11 +517,13 @@ bool BrokerHasKey(const string key, ulong &out_ticket, double &out_price, double
 
 ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
                             const string symbol, ENUM_ORDER_TYPE order_type,
-                            double volume, double &out_fill_price, ulong &out_ticket)
+                            double volume, double &out_fill_price, ulong &out_ticket,
+                            ulong &out_position_ticket)
   {
    int attempt = 0;
    out_fill_price = 0;
    out_ticket = 0;
+   out_position_ticket = 0;
    string direction = (order_type == ORDER_TYPE_BUY) ? "BUY" : "SELL";
 
    while(true)
@@ -520,11 +532,12 @@ ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
       string key = MakeIdemKey(run_id, pair_seq, leg_id, attempt);
 
       // Defence against re-sending an attempt that actually succeeded.
-      ulong bk_ticket; double bk_price, bk_vol; long bk_deal_ms;
-      if(BrokerHasKey(key, bk_ticket, bk_price, bk_vol, bk_deal_ms))
+      ulong bk_ticket; double bk_price, bk_vol; long bk_deal_ms; ulong bk_position;
+      if(BrokerHasKey(key, bk_ticket, bk_price, bk_vol, bk_deal_ms, bk_position))
         {
          out_fill_price = bk_price;
          out_ticket = bk_ticket;
+         out_position_ticket = bk_position;
          JournalWrite(run_id, pair_seq, leg_id, attempt, symbol, direction, volume,
                       STATE_LEG1_FILLED, 0, 0, 0, (long)bk_deal_ms, 0,
                       bk_price, bk_vol, key, 0, 0, CurrentClockOffsetMs(), bk_ticket);
@@ -594,8 +607,13 @@ ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
 
       // Filled (fully or partially). Confirm via deal history rather
       // than trusting result fields alone -- HistoryDealSelect gives
-      // the authoritative DEAL_TIME_MSC needed for T13.
+      // the authoritative DEAL_TIME_MSC needed for T13, and
+      // DEAL_POSITION_ID gives the POSITION ticket -- NOT the same as
+      // the deal ticket in Hedge mode. This is the fix for the pair 1
+      // bug: PositionSelectByTicket() must be called with the position
+      // ticket, never the deal ticket.
       ulong deal_ticket = result.deal;
+      ulong position_ticket = 0;
       long t_fill = t_ack;
       double fill_price = result.price;
       double fill_volume = (retcode == TRADE_RETCODE_DONE_PARTIAL) ? result.volume : volume;
@@ -605,6 +623,7 @@ ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
          fill_price = HistoryDealGetDouble(deal_ticket, DEAL_PRICE);
          long deal_time_msc = (long)HistoryDealGetInteger(deal_ticket, DEAL_TIME_MSC);
          t_fill = ServerMsToLocalEquivalent(deal_time_msc);
+         position_ticket = (ulong)HistoryDealGetInteger(deal_ticket, DEAL_POSITION_ID);
         }
       else
         {
@@ -613,8 +632,21 @@ ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
                "recording result-field price, not deal-confirmed price. Flag this at pair 1 review.");
         }
 
+      if(position_ticket == 0)
+        {
+         // Fallback only -- in Hedge mode the position ticket equals the
+         // ticket of the order that opened it, so result.order is a
+         // reasonable best-effort guess, but it is NOT confirmed the way
+         // the DEAL_POSITION_ID path is. Flagged loudly on purpose.
+         position_ticket = result.order;
+         Print("WARNING: could not confirm position ticket via DEAL_POSITION_ID -- ",
+               "falling back to result.order=", result.order, " (unconfirmed). ",
+               "Verify this manually against the terminal's Trade tab before trusting it.");
+        }
+
       out_fill_price = fill_price;
       out_ticket = deal_ticket;
+      out_position_ticket = position_ticket;
 
       JournalWrite(run_id, pair_seq, leg_id, attempt, symbol, direction, volume,
                    (retcode == TRADE_RETCODE_DONE_PARTIAL) ? STATE_LEG1_PARTIAL : STATE_LEG1_FILLED,
@@ -622,9 +654,16 @@ ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
                    fill_price, fill_volume, key, ref_at_decide, ref_at_send,
                    CurrentClockOffsetMs(), deal_ticket);
 
-      Print("[pair ", pair_seq, " leg ", leg_id, " attempt ", attempt, "] FILLED ticket=", deal_ticket,
-            " price=", fill_price, " (ref_at_send was ", ref_at_send, ", slippage=",
-            DoubleToString(fill_price - ref_at_send, 5), ")");
+      // Signed per section 5's convention: positive always means adverse
+      // to the trade (dir=+1 BUY, dir=-1 SELL). Fixed here 2026-09-17 --
+      // the first version printed the raw fill-ref difference unsigned,
+      // which reads backwards for a SELL (a lower fill looked "negative"
+      // when it is actually adverse).
+      double dir = (order_type == ORDER_TYPE_BUY) ? 1.0 : -1.0;
+      double signed_slippage = (fill_price - ref_at_send) * dir;
+      Print("[pair ", pair_seq, " leg ", leg_id, " attempt ", attempt, "] FILLED deal=", deal_ticket,
+            " position=", position_ticket, " price=", fill_price, " (ref_at_send was ", ref_at_send,
+            ", slippage=", DoubleToString(signed_slippage, 5), ", +=adverse)");
 
       return (retcode == TRADE_RETCODE_DONE_PARTIAL) ? LEG_PARTIAL : LEG_FILLED;
      }
@@ -773,9 +812,9 @@ void RunOnePair()
    Print("=====================================================================");
 
    g_state = STATE_LEG1_SUBMITTED;
-   double leg1_price; ulong leg1_ticket;
+   double leg1_price; ulong leg1_deal; ulong leg1_position;
    ENUM_LEG_RESULT r1 = ExecuteLeg(g_run_id, pair_seq, 1, InpSymbolFutures, ORDER_TYPE_SELL,
-                                    InpVolume, leg1_price, leg1_ticket);
+                                    InpVolume, leg1_price, leg1_deal, leg1_position);
 
    if(r1 == LEG_FAILED_NONTRANSIENT || r1 == LEG_FAILED_AFTER_RETRIES)
      {
@@ -796,7 +835,7 @@ void RunOnePair()
       g_state = STATE_ORPHANED;
       Print("LEG 1 PARTIAL FILL -- treating as exposure, emergency-flattening residual");
       g_state = STATE_EMERGENCY_FLATTENING;
-      bool flattened = CloseLegByTicket(leg1_ticket);
+      bool flattened = CloseLegByTicket(leg1_position);
       if(!flattened)
          TripKillSwitch("partial-fill flatten failed -- manual intervention required NOW");
       g_state = STATE_CLOSED_ORPHAN;
@@ -810,23 +849,24 @@ void RunOnePair()
    // r1 == LEG_FILLED
    g_state = STATE_LEG1_FILLED;
    g_state = STATE_LEG2_SUBMITTED;
-   double leg2_price; ulong leg2_ticket;
+   double leg2_price; ulong leg2_deal; ulong leg2_position;
    ENUM_LEG_RESULT r2 = ExecuteLeg(g_run_id, pair_seq, 2, InpSymbolSpot, ORDER_TYPE_BUY,
-                                    InpVolume, leg2_price, leg2_ticket);
+                                    InpVolume, leg2_price, leg2_deal, leg2_position);
 
    double realized_loss = 0;
 
    if(r2 == LEG_FILLED || r2 == LEG_PARTIAL)
      {
       g_state = STATE_HEDGED;
-      Print("HEDGED. leg1=", leg1_ticket, " @", leg1_price, "  leg2=", leg2_ticket, " @", leg2_price);
+      Print("HEDGED. leg1 position=", leg1_position, " @", leg1_price,
+            "  leg2 position=", leg2_position, " @", leg2_price);
 
       if(InpDwellMs > 0)
          Sleep((int)InpDwellMs); // fixed at 0 per section 8.1.1; kept for completeness
 
       g_state = STATE_UNWINDING;
-      bool c1 = CloseLegByTicket(leg1_ticket);
-      bool c2 = CloseLegByTicket(leg2_ticket);
+      bool c1 = CloseLegByTicket(leg1_position);
+      bool c2 = CloseLegByTicket(leg2_position);
       if(!c1 || !c2)
         {
          TripKillSwitch(StringFormat("exit leg failed to close (leg1_ok=%s leg2_ok=%s) -- manual intervention required NOW",
@@ -846,9 +886,9 @@ void RunOnePair()
       // Leg 2 failed in any form -- roll back leg 1. The single most
       // important path, per 34_DEMO_TEST_PLAN.md section 5.
       g_state = STATE_ORPHANED;
-      Print("LEG 2 FAILED -- rolling back leg 1 (ticket ", leg1_ticket, ")");
+      Print("LEG 2 FAILED -- rolling back leg 1 (position ", leg1_position, ")");
       g_state = STATE_EMERGENCY_FLATTENING;
-      bool flattened = CloseLegByTicket(leg1_ticket);
+      bool flattened = CloseLegByTicket(leg1_position);
       if(!flattened)
         {
          TripKillSwitch("rollback of leg 1 failed after leg 2 failure -- manual intervention required NOW");
