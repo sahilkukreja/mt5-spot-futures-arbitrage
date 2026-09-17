@@ -163,6 +163,48 @@ the mandate's "EXPECTED vs ABNORMAL" question — a fair-value-based entry/exit 
 proposed responsibly until Q-002 (settlement/rollover) resolves and, ideally, the dataset extends closer to the
 actual 25 Nov 2026 expiry to observe the relationship's behavior as `T → 0`, which remains untested.
 
+## Residual dispersion and reversion — measured 2026-09-18, mandatory test from `/arb-hostile-review`
+
+`/arb-hostile-review` against `docs/Gold-Basis-EA-Strategy-and-System-Design.md` (2026-09-18) found that
+proposal's central premise — that the carry-baseline residual `x_t = mid_basis − spot_ask·r_hat·T_years`
+mean-reverts on a tradeable timescale — had never been measured anywhere in this repository, and speculated
+the intraday range cited as "opportunity" might mostly be carry decay rather than genuine residual. Both
+concerns are now measured, using `tools/q3_q4_research.py`'s new `analyze_residual_reversion()`, fixed
+`r_hat=0.0471` (the already-validated median rate above), same 45-day/5,111,120-row dataset:
+
+| Question | Speculated in the hostile review | Measured |
+|---|---|---|
+| Is residual dispersion thin relative to the $0.4975 round-trip cost? | Possibly, "same order of magnitude" | **No** — residual std **$1.32**, **2.65× the round-trip cost** |
+| Is the $7.91-ish median intraday range mostly carry decay, not residual? | Possibly, same trap as the original EV sign error | **No** — median daily carry-baseline range **$1.02**; median daily residual range **$7.00** (≈99% of the ~$7.09 total measured here) |
+
+**Both hostile-review concerns are refuted by measurement, not confirmed** — stated plainly since the point of
+raising them was to check, not to guess correctly. This is genuinely different from the original EV-sign
+error this project already made once: there, the revenue side was assumed and turned out negative; here, the
+revenue-side *dispersion* is measured and is not thin.
+
+**This does not establish tradeable edge.** Unresolved, precisely stated:
+
+- `r_hat` was fixed at the validated median rate, not the proposal's own "lagged robust estimate" — the
+  half-life estimate grows with the resampling grid (67.7 min at 1-min bars → 1,232 min at 240-min bars),
+  the same non-stationary-drift signature `analyze_basis_decay()` already found in the *raw* basis series.
+  A fixed baseline does not fully remove this; a proper rolling/lagged estimator (as the proposal specifies)
+  might behave differently and has not been tested.
+- No transaction cost, slippage, or execution risk is netted against this dispersion — it is a **gross**
+  dispersion measurement, not an expected-value calculation. `residual_std_over_round_trip_cost=2.65` says
+  there is room to potentially clear costs on a favorable draw; it does not say the *conditional, signal-
+  triggered* draw clears costs on average, which is the actual mandate question.
+- The residual's own distribution has a heavy tail on the downside (min −$39.89 against p05 of only −$2.42) —
+  very likely the same R-004 stale-quote artifact already isolated elsewhere, not a second finding, but not
+  excluded from this run either.
+- Still no independent way to separate "genuine mispricing" from "stable broker CFD markup convention"
+  (`GC-Z26` is `SYMBOL_CALC_MODE_CFD`) — a persistently large residual is equally consistent with either
+  explanation.
+
+Reproducible: `python tools/q3_q4_research.py --basis-csv research/2026-09-16T140628Z/basis_synchronized.csv
+--pairs-csv research/2026-09-16T140628Z/reconciled_pairs.csv --expiry-date 2026-11-25 --sofr-rate 0.0364
+--sofr-rate-date 2026-09-15 --residual-r-hat 0.0471`, output archived at
+`research/2026-09-16T140628Z/residual_reversion_report.json`.
+
 ## Smallest next empirical test
 
 Re-run the same tick collection and `analyze_fair_value()` call periodically (roughly monthly, and especially

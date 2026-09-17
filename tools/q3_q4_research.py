@@ -351,6 +351,94 @@ def analyze_fair_value(basis: pd.DataFrame, expiry_date: str, sofr_rate: float |
     return result
 
 
+def analyze_residual_reversion(
+    basis: pd.DataFrame, expiry_date: str, r_hat: float, resample_minutes: tuple[int, ...]
+) -> dict[str, Any]:
+    """Measures the carry-baseline residual x_t = mid_basis - B_hat, where B_hat = spot_ask * r_hat * T_years,
+    using the already-validated median implied rate (r_hat) as a fixed baseline. This is the quantity a
+    residual-mean-reversion strategy (e.g. docs/Gold-Basis-EA-Strategy-and-System-Design.md section 5) would
+    actually need to trade -- distinct from analyze_basis_decay()'s raw convergence_basis proxy, which mixes
+    the deterministic carry drift (T shrinking over time) in with any genuine residual reversion. Requested by
+    /arb-hostile-review's mandatory-test finding against that proposal, 2026-09-18: the proposal's central
+    premise (residual reversion) had no measurement anywhere in this repository.
+
+    Does NOT itself establish tradeable edge: still ignores spread/commission/slippage entirely (14_TRANSACTION_
+    COST_MODEL.md's ~$0.4975 round trip is not subtracted here), and r_hat as a single fixed rate is a
+    simplification -- the proposal's own r_hat is a "lagged robust estimate," not a fixed constant. This
+    establishes only whether there is a dollar-scale residual worth building a rolling estimator around at all.
+    """
+    required = {"fut_time_msc", "mid_basis", "spot_ask"}
+    if not required.issubset(basis.columns):
+        return {"status": "insufficient_data", "reason": f"missing columns: {sorted(required - set(basis.columns))}"}
+
+    frame = basis[["fut_time_msc", "mid_basis", "spot_ask"]].copy()
+    frame["fut_time_utc"] = pd.to_datetime(frame["fut_time_msc"], unit="ms", utc=True)
+    expiry = pd.Timestamp(expiry_date, tz="UTC")
+    frame["T_years"] = (expiry - frame["fut_time_utc"]).dt.total_seconds() / (365 * 24 * 3600)
+    frame = frame[frame["T_years"] > 0].dropna(subset=["mid_basis", "spot_ask"])
+    if frame.empty:
+        return {"status": "insufficient_data", "reason": "all rows are at/after the supplied expiry date"}
+
+    frame["b_hat"] = frame["spot_ask"] * r_hat * frame["T_years"]
+    frame["x_t"] = frame["mid_basis"] - frame["b_hat"]
+    residual_stats = stats(frame["x_t"])
+
+    round_trip_cost = 0.4975  # sourced, 14_TRANSACTION_COST_MODEL.md -- comparison only, not subtracted above
+    result: dict[str, Any] = {
+        "status": "measured",
+        "model": "x_t = mid_basis - spot_ask * r_hat * T_years, r_hat fixed at the already-validated median "
+        "implied rate (NOT a rolling/lagged estimate as the proposal itself specifies -- a simplification, "
+        "stated explicitly)",
+        "r_hat_used": r_hat,
+        "expiry_date": expiry_date,
+        "residual_x_t_dollars": residual_stats,
+        "round_trip_cost_usd_for_comparison": round_trip_cost,
+        "residual_std_over_round_trip_cost": round(residual_stats["std"] / round_trip_cost, 3)
+        if residual_stats.get("std")
+        else None,
+    }
+
+    # Reversion structure of x_t itself, same method as analyze_basis_decay()'s raw-basis proxy --
+    # this is the version that isolates genuine residual reversion from deterministic carry drift.
+    timestamps = pd.to_datetime(frame["fut_time_msc"], unit="ms", utc=True)
+    series = pd.Series(frame["x_t"].to_numpy(), index=timestamps).sort_index()
+    halflife_by_grid: dict[str, Any] = {}
+    for minutes in resample_minutes:
+        resampled = series.resample(f"{minutes}min").last().dropna()
+        r = _ar1_halflife(resampled, minutes)
+        halflife_by_grid[f"{minutes}min"] = r if r is not None else {
+            "status": "insufficient_data",
+            "reason": "fewer than 20 resampled bars at this grid",
+        }
+    result["residual_halflife_by_resample_grid"] = halflife_by_grid
+
+    # Intraday-range decomposition: how much of a day's basis range is the deterministic carry-baseline's own
+    # (small) intraday drift, versus the residual's own range -- addresses the specific "$7.91 median intraday
+    # range cited as opportunity, without checking whether it's residual or ordinary carry drift" hostile-review
+    # finding.
+    frame["date"] = timestamps.dt.date
+    daily = frame.groupby("date").agg(
+        basis_range=("mid_basis", lambda s: float(s.max() - s.min())),
+        b_hat_range=("b_hat", lambda s: float(s.max() - s.min())),
+        x_t_range=("x_t", lambda s: float(s.max() - s.min())),
+    )
+    if not daily.empty:
+        result["intraday_range_decomposition"] = {
+            "n_days": int(len(daily)),
+            "median_basis_range": round(float(daily["basis_range"].median()), 4),
+            "median_carry_baseline_range": round(float(daily["b_hat_range"].median()), 4),
+            "median_residual_range": round(float(daily["x_t_range"].median()), 4),
+            "interpretation": (
+                "If median_carry_baseline_range is small relative to median_basis_range, most of the intraday "
+                "range is residual variance, not deterministic carry decay -- supports treating it as "
+                "'opportunity' as the proposal does. If it's large, the proposal's $7.91 figure overstates "
+                "genuine residual opportunity."
+            ),
+        }
+
+    return result
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Offline Q-003 and Q-004 evidence analyzer.")
     parser.add_argument("--basis-csv", type=Path, required=True, help="basis_synchronized.csv from a tick run")
@@ -400,6 +488,13 @@ def parse_args() -> argparse.Namespace:
         type=str,
         help="Date the --sofr-rate value was sourced for (recorded in the report only, not used in the calc)",
     )
+    parser.add_argument(
+        "--residual-r-hat",
+        type=float,
+        help="Fixed annualized carry rate (decimal, e.g. 0.0471) used as r_hat for the residual-reversion "
+        "analysis (analyze_residual_reversion). Requires --expiry-date. Use the already-validated median "
+        "implied rate from a prior --expiry-date run, not an assumed value.",
+    )
     return parser.parse_args()
 
 
@@ -427,6 +522,10 @@ def main() -> None:
     }
     if args.expiry_date:
         report["fair_value"] = analyze_fair_value(basis, args.expiry_date, args.sofr_rate)
+    if args.expiry_date and args.residual_r_hat is not None:
+        report["residual_reversion"] = analyze_residual_reversion(
+            basis, args.expiry_date, args.residual_r_hat, tuple(args.decay_resample_minutes)
+        )
     output = args.output or args.basis_csv.parent / "q3_q4_report.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2), encoding="utf-8")
