@@ -1,9 +1,11 @@
 # USD 1,000 / 0.01 Lot Live Test Plan — Execution Measurement Trial
 
-Status: **ACCEPTED (D-008, 2026-09-17) — implemented, not yet run.** Reviews done, conditions applied,
-D-008 accepted. `measurement_harness/HarnessStage2_LivePilot.mq5` compiles clean and has never been run.
-Supersedes the live-measurement scope of `34_DEMO_TEST_PLAN.md` (D-007), which is reduced to mechanical
-validation only.
+Status: **ACCEPTED (D-008, 2026-09-17).** Reviews done, conditions applied, D-008 accepted.
+`measurement_harness/HarnessStage2_LivePilot.mq5` compiles clean; 2 of Stage 2's 10 pairs have run
+successfully (§8.1.4 exit criteria not yet met). Supersedes the live-measurement scope of
+`34_DEMO_TEST_PLAN.md` (D-007), which is reduced to mechanical validation only. **§8.2 (Stage 3/4) is a
+first design draft only — not reviewed, not authorized, gated behind Stage 2 reaching 10/10 and its own
+`/arb-risk-review`/`/arb-hostile-review` cycle.**
 
 **Compiling clean does not authorize firing it.** §12's pre-flight checklist is the actual gate, and its one
 remaining open item — live verification of the dedicated account's funding and position count — has not been
@@ -405,6 +407,89 @@ input setting.
 
 **On failure:** return to design/Stage 0–1. Stage 3's 200-pair automated run does not begin from a Stage 2
 that needed a workaround to pass.
+
+## 8.2 Stage 3/4 — operational procedure (design draft, 2026-09-17 — not reviewed, not authorized)
+
+**Status: first draft only.** Stage 2 has completed 2 of its required 10 pairs as of this writing (§8.1.4 is
+not yet met). This section exists so Stage 3/4's design can be thought through and reviewed ahead of time,
+the same way Stage 2's design (§8.1) was written, risk-reviewed, and hostile-reviewed *before* a single line
+of `HarnessStage2_LivePilot.mq5` was written — not so it can be implemented now. **Two separate gates stand
+between this section and any code:**
+
+1. **Stage 2 must reach its own exit criteria (§8.1.4) — 10/10 pairs, not 2/10 — and the operator must
+   explicitly write `stage2_confirmed.flag` (T20).** No input setting, code change, or argument overrides
+   this; it is a deliberate manual sign-off action, never something the harness or this document does for
+   itself.
+2. **This section itself has no risk-review or hostile-review verdict.** §8's own status line already says so:
+   "no verdict on Stage 3/4, which requires its own review once Stage 2's results exist." Writing this draft
+   does not satisfy that — it is what gets reviewed, not a substitute for review. `/arb-risk-review` and
+   `/arb-hostile-review` must both run against this section, with their conditions applied, before any
+   `HarnessStage3Stratum*.mq5` file is written, exactly as happened for Stage 2.
+
+### 8.2.1 What changes from Stage 2 to Stage 3/4
+
+- **Automated, not manual.** Stage 2's `InpStage2Mode=true` disables the timer/condition scheduler entirely
+  and requires a human click per pair (§8.1.1) — that was deliberate, to let a human catch a live-API defect
+  before it could repeat automatically. Stage 3/4 is the opposite: stratum A (200 pairs) fires on a
+  randomised, session-stratified schedule and stratum B (100 pairs) fires when its trigger condition is met
+  (§4) — both without a human clicking anything per pair. This only becomes acceptable once Stage 2 has shown
+  the mechanism itself is sound across 10 supervised pairs; it is not a design choice available earlier.
+- **Dwell-time variation (D-H4), deferred from Stage 2 specifically for this stage.** Stage 2 held
+  `InpDwellMs=0` for all 10 pairs (§8.1.1) to avoid adding a variable to an already-small, noisy sample. Stage
+  3/4 draws dwell per-pair from `{0, 1000, 10000, 60000}` ms, as originally specified in
+  `34_DEMO_TEST_PLAN.md`'s D-H4 — every value stays far below any overnight/swap boundary, so D-006 is not
+  re-litigated. The draw and the actual realised dwell must both be recorded per pair (not just the target),
+  since a guard trip or broker delay could make them differ.
+- **Two independent firing mechanisms running concurrently, not one.** Stratum A's scheduler and stratum B's
+  condition-watcher both need to respect the same concurrency=1 structural guard Stage 2 already uses
+  (`g_state == STATE_IDLE`) — whichever one's trigger condition is met first proceeds; the other's trigger
+  firing at the same instant must be dropped, not queued, same as a double chart-button click today would be
+  ignored while `g_state != STATE_IDLE`.
+- **Per-pair record grows two new required fields**, needed by T15 (sampling-weight integrity): `stratum`
+  (`A` or `B`), the specific trigger reason if `B` (which of the three OR conditions in §4 fired), and a
+  **sampling weight** — stratum A's is constant (unconditional design), stratum B's must be derived from the
+  empirical trigger-condition frequency (~0.9% of ticks combined, §4) so that reweighting stratum A+B
+  reproduces the full population's covariate distribution. **The exact weight formula is not decided in this
+  draft** — flagged here as an open item for the Stage 3/4 review, not silently assumed.
+- **Budget guards carry the same mechanism, but need a stage-aware ceiling check.** `InpMaxCumulativeLossUsd`
+  (250) and `InpMaxPairsPerDay` (50) are unchanged in mechanism from Stage 2 — `GuardBudgetsLogic()` in
+  `HarnessStage2_Guards.mqh` already handles them generically and needs no new logic. What Stage 3/4 adds is
+  an *operational* check, not a code change: before starting, verify Stage 2's realized cost (currently
+  $0.61 of the $250 cap after 2 pairs) plus Stage 3/4's ≈USD 150 target still leaves headroom under the cap,
+  and re-verify this arithmetic once Stage 2 actually reaches 10/10 (its realized cost is not yet known at
+  n=10).
+- **Unattended operation needs a control Stage 2 doesn't, precisely because Stage 2 was designed to avoid
+  needing one.** §8.1's whole premise is "a human verifies each pair before the next fires" — that premise is
+  gone once firing is automatic. Candidate controls, **none implemented or reviewed yet**:
+  - A heartbeat/dead-man's-switch check: if the journal hasn't been written to within some stated window
+    during an active run, halt and alert rather than continue firing blind.
+  - The same session-boundary guard Stage 0's demo design already specified (`34_DEMO_TEST_PLAN.md`'s
+    `now + max_dwell + margin < session_close`), now load-bearing rather than a nice-to-have, since nothing
+    else stops a pair from firing minutes before close with a 60-second dwell still pending.
+  - **Open question, not resolved here:** should stratum A's randomised schedule *include* the R-004
+    Friday/13:30 UTC anomaly window, or exclude it the way Stage 2's single-pair window deliberately did
+    (§8.1.1)? Excluding it would bias stratum A's "unconditional" distribution low, defeating its purpose as
+    an unbiased reweighting reference (§4); including it means Stage 3/4 may fire directly into a known
+    irregular window unsupervised. This is a genuine design tension, surfaced here for the Stage 3/4 review
+    to resolve — not decided unilaterally in this draft.
+  - A reduced but nonzero operator check-in cadence (not per-pair, but periodic) — the actual interval is
+    also undecided here.
+
+### 8.2.2 Pre-flight checklist for Stage 3 start (draft — none of these are satisfied yet)
+
+- [ ] Stage 2 exit criteria (§8.1.4) fully met: 10/10 pairs reach a terminal state, 0 kill-switch trips, 0
+      `RECONCILIATION_REQUIRED`, `DEAL_TIME_MSC` used throughout, `clock_offset_ms` stable, fills within a
+      plausible band of independently-noted quotes, total realized cost consistent with the ≈USD 5 estimate.
+      **Currently 2/10.**
+- [ ] Operator has written `stage2_confirmed.flag` (T20) — deliberate manual action.
+- [ ] `/arb-risk-review` run against this section (8.2), conditions applied.
+- [ ] `/arb-hostile-review` run against this section (8.2), conditions applied.
+- [ ] Sampling-weight formula for stratum B finalised and reviewed (currently undecided, above).
+- [ ] Stratum A's Friday/13:30 UTC inclusion-vs-exclusion question resolved (currently undecided, above).
+- [ ] Unattended-operation controls (heartbeat, session-boundary guard) implemented in code and covered by a
+      Stage-0-style self-test before any real firing — same standard already applied to Stage 2's guards
+      (`HarnessStage2_SelfTest.mq5`).
+- [ ] Remaining budget re-verified against Stage 2's actual realized cost at 10/10, not the 2/10 figure above.
 
 ## 9. Acceptance tests
 
