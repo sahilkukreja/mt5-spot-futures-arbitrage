@@ -325,21 +325,26 @@ project's execution code — Stage 0 touched none of them, by design. §8.1.3 tr
       rationale corrected, stage-gate file added)
 - [x] Risk-review conditions C1–C6 applied to this document (2026-09-16)
 - [x] D-008 accepted in `DECISION_LOG.md` (2026-09-17, triggered by the account owner's implementation request)
-- [ ] Dedicated account open (account owner confirms it is, 2026-09-16 — not yet independently verified),
-      funded to USD 1,000, zero other positions, confirmed via a fresh `AccountInfoInteger`/`AccountInfoDouble`
-      read immediately before starting — this read is the actual precondition, not the prior confirmation
+- [x] Dedicated account open, funded, zero other positions — **satisfied by evidence, not just the account
+      owner's earlier statement.** `GuardAccountWhitelisted()`/`GuardAccountIsReal()` performed a fresh
+      `AccountInfoInteger` read at `OnInit` on both real runs (pairs 1 and 2), and `StartupReconciling()`
+      found no pre-existing position on either attach. This is the fresh-read precondition the checklist
+      asked for, now satisfied by two actual runs rather than a prior statement alone.
 - [x] ~~Stage 1 (20 demo pairs) completed~~ — **removed by explicit account-owner decision (§8).** Not
       satisfied, not applicable. Compensating measure: pair 1 of this checklist's own run gets the elevated
       scrutiny described above and in §8.1.3, since it is now the first real-API contact of any kind
-- [x] Stage 2's successor code, `measurement_harness/HarnessStage2_LivePilot.mq5`, compiled 0 errors
-      (2026-09-17). **Never run — a clean compile is not evidence it works, see the file's own README entry.**
-- [ ] Account whitelist and credentials confirmed loaded from the gitignored runtime config, not source —
-      implemented in code (`ReadWhitelistedAccount()`, reads `stage2_live_config.txt` from `MQL5/Files/`,
-      grep-verified to contain no hardcoded account number) — **the config file itself must still be created
-      locally by the operator before first run; it does not exist yet**
-- [ ] Current session/time checked against 8.1.1's window guidance (not Friday, not near 13:30 UTC, not near
-      a session boundary, not within 14 days of the 25 Nov 2026 expiry hard stop)
-- [ ] Operator present and able to watch the run continuously — Stage 2 is not a "start and walk away" stage
+- [x] Stage 2's successor code, `measurement_harness/HarnessStage2_LivePilot.mq5`, compiled 0 errors and **has
+      now run twice against the real account, both times to a clean `COMPLETED` outcome** (2026-09-17) — see
+      `measurement_harness/README.md` "Second real run" and "Third real run."
+- [x] Account whitelist and credentials confirmed loaded from the gitignored runtime config, not source —
+      the config file exists locally and has been read successfully on both real runs (`Ready. Account
+      whitelist OK.` in the Experts log each time); no account number appears in any committed file
+      (grep-verified).
+- [x] *(satisfied for pairs 1–2, must be re-verified before each of pairs 3–10, not a one-time gate item)*
+      Current session/time checked against 8.1.1's window guidance (not Friday, not near 13:30 UTC, not near
+      a session boundary, not within 14 days of the 25 Nov 2026 expiry hard stop).
+- [x] *(satisfied for pairs 1–2, must be re-verified before each of pairs 3–10, not a one-time gate item)*
+      Operator present and able to watch the run continuously — Stage 2 is not a "start and walk away" stage.
 
 ### 8.1.3 Per-pair procedure (repeated 10 times, one at a time)
 
