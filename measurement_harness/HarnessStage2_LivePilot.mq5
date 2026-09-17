@@ -58,6 +58,23 @@ input int    InpMaxOpenRetries       = 3;
 input int    InpMaxConsecutiveFailures = 3;
 input double InpMaxSpreadUsd         = 3.00;    // circuit breaker, not a filter (D-H1)
 input double InpMinMarginLevelPct    = 300.0;
+// Fast-market/stale-quote guard (R-004), added 2026-09-18 -- catches what
+// InpMaxSpreadUsd cannot: the 2026-09-11 13:30 UTC anomaly had a NORMAL
+// per-leg spread on both legs while futures repriced ~54 points in ~10s
+// and spot stayed frozen. docs/02_quant/13_BASIS_MODEL.md found per-leg
+// price velocity catches this "with a large margin" (the documented
+// extreme is 161.6 pts/sec vs a measured p99.9 of 8.08 pts/sec across
+// 707,467 rows); 20.0 here is a reasoned but explicitly UNCALIBRATED
+// starting candidate (roughly 2.5x p99.9, ~8x below the one observed
+// extreme) -- an operator decision informed by the data, not a value
+// this file invents authority for. Same status as InpMaxSpreadUsd.
+input double InpMaxVelocityPtsPerSec = 20.0;    // UNCALIBRATED -- see comment above
+input long   InpMaxQuoteAgeMs        = 2000;    // UNCALIBRATED -- a tick older than this is stale, not just slow
+input long   InpMaxCrossLegSkewMs    = 400;     // UNCALIBRATED -- the 384ms p95 candidate from 13_BASIS_MODEL.md;
+                                                  // known NOT sufficient alone (the R-004 row's own skew was 238,
+                                                  // inside this threshold) -- kept only as a supplementary signal,
+                                                  // per HarnessStage2_Guards.mqh's GuardFastMarketLogic() comment
+input long   InpVelocityLookbackMs   = 3000;    // window scanned via CopyTicksRange() before each fire
 input long   InpAckTimeoutMs         = 5000;
 input long   InpFillTimeoutMs        = 10000;
 input long   InpOrphanTimeoutMs      = 3000;
@@ -334,6 +351,70 @@ bool GuardConcurrency()
    // symmetry with the design doc's guard table and as a second,
    // independent check at RISK_CHECKING time.
    return g_state == STATE_IDLE;
+  }
+
+// Scans the most recent InpVelocityLookbackMs of real ticks for one
+// symbol via CopyTicksRange() and returns the single highest tick-to-
+// tick velocity found (mid price, points/sec). Returns -1 (the same
+// "invalid, fail closed" sentinel TickVelocityPtsPerSec itself returns
+// for dt<=0) if fewer than 2 ticks are available in the window --
+// a data gap right before firing is itself not a condition this guard
+// should silently wave through.
+double MaxVelocityInWindow(const string symbol, long now_server_ms)
+  {
+   MqlTick ticks[];
+   ulong to_msc = (ulong)now_server_ms;
+   ulong from_msc = (to_msc > (ulong)InpVelocityLookbackMs) ? to_msc - (ulong)InpVelocityLookbackMs : 0;
+   int n = CopyTicksRange(symbol, ticks, COPY_TICKS_INFO, from_msc, to_msc);
+   if(n < 2)
+      return -1;
+   double max_v = 0;
+   for(int i = 1; i < n; i++)
+     {
+      double mid_prev = (ticks[i-1].bid + ticks[i-1].ask) / 2.0;
+      double mid_curr = (ticks[i].bid + ticks[i].ask) / 2.0;
+      double v = TickVelocityPtsPerSec(mid_prev, (long)ticks[i-1].time_msc, mid_curr, (long)ticks[i].time_msc);
+      if(v < 0)
+         return -1; // a bad timestamp pair anywhere in the window invalidates the whole read -- fail closed
+      if(v > max_v)
+         max_v = v;
+     }
+   return max_v;
+  }
+
+// Real-API wrapper for the fast-market/stale-quote guard (R-004).
+// Gathers real tick history via CopyTicksRange(), delegates the
+// decision to GuardFastMarketLogic() in HarnessStage2_Guards.mqh.
+// NOT covered by HarnessStage2_SelfTest.mq5 -- only a real pair run
+// exercises this function itself; the self-test's G13-G17 cover the
+// pure logic it delegates to, including a replay of the actual
+// 2026-09-11 anomaly.
+bool GuardFastMarket()
+  {
+   long now_server_ms = (long)TimeCurrent() * 1000;
+
+   double velocity_futures = MaxVelocityInWindow(InpSymbolFutures, now_server_ms);
+   double velocity_spot    = MaxVelocityInWindow(InpSymbolSpot, now_server_ms);
+
+   MqlTick t_futures, t_spot;
+   if(!SymbolInfoTick(InpSymbolFutures, t_futures) || !SymbolInfoTick(InpSymbolSpot, t_spot))
+     {
+      Print("BLOCKED: fast-market guard cannot read current ticks for one or both symbols");
+      return false;
+     }
+   long age_futures = QuoteAgeMs(now_server_ms, (long)t_futures.time_msc);
+   long age_spot    = QuoteAgeMs(now_server_ms, (long)t_spot.time_msc);
+   long skew        = CrossLegSkewMs((long)t_futures.time_msc, (long)t_spot.time_msc);
+
+   bool ok = GuardFastMarketLogic(velocity_futures, velocity_spot, InpMaxVelocityPtsPerSec,
+                                   age_futures, age_spot, InpMaxQuoteAgeMs,
+                                   skew, InpMaxCrossLegSkewMs);
+   if(!ok)
+      Print("BLOCKED: fast-market guard (velocity_fut=", DoubleToString(velocity_futures, 2),
+            " velocity_spot=", DoubleToString(velocity_spot, 2), " max_v=", InpMaxVelocityPtsPerSec,
+            " age_fut=", age_futures, " age_spot=", age_spot, " max_age=", InpMaxQuoteAgeMs,
+            " skew=", skew, " max_skew=", InpMaxCrossLegSkewMs, ")");
+   return ok;
   }
 
 //====================================================================
@@ -832,6 +913,8 @@ void RunOnePair()
      { Print("BLOCKED: spread circuit breaker (InpMaxSpreadUsd=", InpMaxSpreadUsd, ")"); g_state = STATE_IDLE; return; }
    if(!GuardMarginLevel())
      { Print("BLOCKED: projected margin level below InpMinMarginLevelPct (", InpMinMarginLevelPct, "%)"); g_state = STATE_IDLE; return; }
+   if(!GuardFastMarket())
+     { g_state = STATE_IDLE; return; } // GuardFastMarket already prints its own reason (R-004)
    if(!GuardBudgets(InpMaxTradeLossUsd))
      { g_state = STATE_IDLE; return; } // GuardBudgets already prints its own reason
 

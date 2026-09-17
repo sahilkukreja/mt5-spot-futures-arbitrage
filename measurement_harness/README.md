@@ -21,9 +21,9 @@ needs a full, reviewed design first.
 | File | Stage | Status |
 |---|---|---|
 | `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | **Verified.** 12/12 PASS, confirmed by real execution, 2026-09-16. |
-| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pairs 1 and 2 both completed successfully, 2026-09-17.** Pair 2 also verified the R-011 realized-P&L fix against a real broker (-$0.61, correctly accumulated). `InpMaxPairs` now 2 — see "Third real run" below before raising it further. Places real orders. |
-| `HarnessStage2_Guards.mqh` | Stage 2 — pure decision logic | **Verified.** 12/12 PASS via `HarnessStage2_SelfTest.mq5`, confirmed by real execution, 2026-09-17. No broker/account API call anywhere in it (checkable by grep). |
-| `HarnessStage2_SelfTest.mq5` | Stage 2 — guard self-test | **Verified.** 12/12 PASS, confirmed by real execution on the VPS terminal, 2026-09-17. Tests every function in the `.mqh` above; does not touch a broker. |
+| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pairs 1 and 2 both completed successfully, 2026-09-17.** Pair 2 also verified the R-011 realized-P&L fix against a real broker (-$0.61, correctly accumulated). `InpMaxPairs` now 2 — see "Third real run" below before raising it further. **2026-09-18: `GuardFastMarket()` (R-004) added and compiled clean** — see "Fast-market guard" below. Not yet exercised on a real pair. Places real orders. |
+| `HarnessStage2_Guards.mqh` | Stage 2 — pure decision logic | 12/12 PASS (G1–G12) via `HarnessStage2_SelfTest.mq5`, confirmed by real execution, 2026-09-17. **2026-09-18: 5 new functions added (`TickVelocityPtsPerSec`, `QuoteAgeMs`, `CrossLegSkewMs`, `GuardFastMarketLogic`) for the R-004 guard — compiled clean, G13–G17 written, not yet run for real.** No broker/account API call anywhere in it (checkable by grep). |
+| `HarnessStage2_SelfTest.mq5` | Stage 2 — guard self-test | 12/12 PASS (G1–G12), confirmed by real execution on the VPS terminal, 2026-09-17. **2026-09-18: G13–G17 added, including G17 — a replay of the actual 2026-09-11 13:30 UTC anomaly's recorded prices/timestamps — compiled clean, not yet run for real.** Tests every function in the `.mqh` above; does not touch a broker. |
 
 Stage 1 (demo shakedown) was skipped by explicit account-owner decision — see `RISK_REGISTER.md` R-010 and
 `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 8. No Stage 1 file exists or will.
@@ -292,6 +292,54 @@ which account is logged in is irrelevant.
 guard wrapper. Those touch `OrderSend`, `PositionSelectByTicket`, and `HistoryDealSelect` against a real
 broker connection, and can only be validated by an actual pair run — the same boundary Stage 0's own
 "Known limitation" section already draws for its own restart-simulation logic.
+
+### Fast-market/stale-quote guard (R-004) — added 2026-09-18, compiled clean, not yet run for real
+
+Both `/arb-risk-review` and `/arb-hostile-review` rejected `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md`
+§8.2 (Stage 3/4) on the same finding: `GuardSpreadLogic()` checks only each leg's own bid-ask spread, never
+quote age or cross-leg staleness, and would **not** have caught the 2026-09-11 13:30 UTC anomaly — the
+futures leg repriced ~54 points in ~10 seconds while the spot leg's ask stayed frozen at a normal, narrow
+spread. `docs/02_quant/13_BASIS_MODEL.md`'s own conclusion: "per-leg price velocity would have caught it,
+with a large margin" (the documented extreme is 161.6 pts/sec vs. a measured p99.9 of 8.08 pts/sec across
+707,467 rows; the anomaly's own `quote_skew_ms` of 238 sits *inside* the still-unapproved 400ms staleness
+candidate, confirming skew alone would have missed it).
+
+**Added to `HarnessStage2_Guards.mqh`:** `TickVelocityPtsPerSec()`, `QuoteAgeMs()`, `CrossLegSkewMs()`, and
+`GuardFastMarketLogic()` — pure functions, no broker API calls, same testability pattern as everything else
+in that file. Every threshold is an `input` in `HarnessStage2_LivePilot.mq5`
+(`InpMaxVelocityPtsPerSec=20.0`, `InpMaxQuoteAgeMs=2000`, `InpMaxCrossLegSkewMs=400`), each labeled
+**UNCALIBRATED** in its own comment, same status as `InpMaxSpreadUsd` — reasoned starting candidates
+(20 pts/sec is roughly 2.5× the measured p99.9 and ~8× below the one observed extreme), not values this
+project claims authority for. **NO MAGIC VALUES**: nothing here is a literal baked into the logic itself.
+
+**Added to `HarnessStage2_LivePilot.mq5`:** `MaxVelocityInWindow()` scans real ticks via `CopyTicksRange()`
+over `InpVelocityLookbackMs` (3000ms) and finds the highest tick-to-tick velocity in that window; `GuardFastMarket()`
+gathers real values (velocity on both legs, quote age on both legs, cross-leg skew) and delegates the decision
+to `GuardFastMarketLogic()`. Wired into `RunOnePair()`'s guard chain, right after `GuardMarginLevel()` and
+before `GuardBudgets()`. A data gap (fewer than 2 ticks in the lookback window, or an unusable timestamp pair)
+returns the same -1 "invalid, fail closed" sentinel `TickVelocityPtsPerSec()` itself uses for `dt<=0` — this
+guard blocks on missing data, it never waves a data gap through as "no movement detected."
+
+**Verification status, stated precisely:**
+
+- `HarnessStage2_Guards.mqh`'s 4 new functions: compiled clean.
+- `HarnessStage2_SelfTest.mq5`'s new tests G13–G17: compiled clean, **not yet run.** G17 is the load-bearing
+  one — it replays the *actual recorded prices and timestamps* from the 2026-09-11 13:30 UTC anomaly
+  (`docs/02_quant/13_BASIS_MODEL.md`'s own row-level table, not a synthetic case) through
+  `GuardFastMarketLogic()` and asserts it blocks. G16 separately confirms skew alone (238ms, matching the
+  anomaly's own documented value) would **not** have blocked it — reproducing this project's own prior
+  finding, not contradicting it.
+- `HarnessStage2_LivePilot.mq5`'s `GuardFastMarket()`/`MaxVelocityInWindow()`: compiled clean, **never
+  exercised against a real broker connection.** `CopyTicksRange()`'s actual behavior against this specific
+  broker — tick availability, timestamp granularity, whether the lookback window reliably contains enough
+  ticks in quiet conditions — is unverified. Same standard as always: a clean compile is not evidence it
+  works.
+
+**What this does and does not resolve:** this satisfies Stage 3/4 review mitigation 1's core ask — a named,
+implemented guard, tested against the specific historical event that motivated it — but Stage 3/4 itself
+remains blocked behind mitigations 2–7 and a full re-review, unchanged by this addition alone. It does
+directly strengthen Stage 2's own posture for pairs 3–10, once the self-test actually runs and the guard is
+exercised on a real pair without incident.
 
 ### What is intentionally not yet implemented
 

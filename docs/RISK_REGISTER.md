@@ -196,8 +196,23 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   biasing the unconditional distribution it exists to measure. See §8.2's "Review findings, 2026-09-17" for
   the required mitigation (a real-time quote-age/velocity/cross-leg-skew guard, tested against this specific
   event) before Stage 3/4 can be re-reviewed.
+- **Update 2026-09-18 — the guard now exists in code, compiled clean, not yet run for real.**
+  `TickVelocityPtsPerSec()`, `QuoteAgeMs()`, `CrossLegSkewMs()`, and `GuardFastMarketLogic()` added to
+  `HarnessStage2_Guards.mqh`; `GuardFastMarket()`/`MaxVelocityInWindow()` added to
+  `HarnessStage2_LivePilot.mq5` (real tick history via `CopyTicksRange()`), wired into `RunOnePair()`'s guard
+  chain. `HarnessStage2_SelfTest.mq5`'s new G17 test replays the **actual recorded prices and timestamps**
+  from this event (`02_quant/13_BASIS_MODEL.md`'s row-level table) and asserts the guard blocks it; G16
+  separately confirms skew alone (238ms, the event's own documented value) does **not** block it, reproducing
+  rather than contradicting this entry's prior finding. All thresholds
+  (`InpMaxVelocityPtsPerSec=20.0`, `InpMaxQuoteAgeMs=2000`, `InpMaxCrossLegSkewMs=400`) are inputs, labeled
+  UNCALIBRATED, same status as `InpMaxSpreadUsd` — reasoned candidates, not derived numbers. **Not yet run**:
+  the self-test's G13–G17 (pure logic, no broker), and `GuardFastMarket()` itself against a real broker
+  connection (never exercised). This addresses Stage 3/4 review mitigation 1's core ask but does not by
+  itself clear Stage 3/4 — mitigations 2–7 and a full re-review remain outstanding. It does strengthen Stage
+  2 pairs 3–10 directly, once verified. See `measurement_harness/README.md` "Fast-market/stale-quote guard"
+  for the full account.
 - **Owner:** Data and execution research
-- **Status:** open
+- **Status:** open — mitigation implemented, unverified against real execution
 
 ### R-005: Incorrect futures contract or expiry transition
 - **Cause:** stale symbol configuration, inaccurate broker metadata, silent symbol substitution, or trading inside the roll/expiry risk window

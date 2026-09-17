@@ -456,9 +456,15 @@ biasing the very thing it exists to measure.
 
 Required mitigations, in priority order:
 
-1. **A real-time quote-age/velocity or cross-leg-skew guard**, sized and tested against the 2026-09-11
-   anomaly specifically — proven against that historical row, not designed in the abstract. Nothing else on
-   this list matters if this isn't built.
+1. **[IMPLEMENTED 2026-09-18, unverified against real execution]** A real-time quote-age/velocity/cross-leg-
+   skew guard, sized and tested against the 2026-09-11 anomaly specifically — proven against that historical
+   row, not designed in the abstract. `GuardFastMarketLogic()` added to `HarnessStage2_Guards.mqh`,
+   `GuardFastMarket()` wired into `HarnessStage2_LivePilot.mq5`'s guard chain; `HarnessStage2_SelfTest.mq5`'s
+   new G17 replays the actual recorded 2026-09-11 prices/timestamps and asserts the guard blocks them.
+   Compiled clean; **the self-test has not yet been run, and `GuardFastMarket()` has never touched a real
+   broker connection.** See `measurement_harness/README.md` "Fast-market/stale-quote guard" and
+   `RISK_REGISTER.md` R-004's 2026-09-18 update for the full account. Satisfying this mitigation's *design*
+   ask does not by itself clear Stage 3/4 — mitigations 2–7 below and a full re-review still stand.
 2. **A weekly drawdown limit**, separate from the existing daily/cumulative ones — named in this project's own
    risk-review inputs (legacy taxonomy: daily-loss-percent *plus* a separate weekly drawdown percent) and
    more relevant here than at Stage 2's single-session scale.

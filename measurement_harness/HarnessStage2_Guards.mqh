@@ -192,3 +192,90 @@ double DealPnLFromComponents(double profit, double swap, double commission)
   {
    return profit + swap + commission;
   }
+
+//====================================================================
+// Fast-market / stale-quote guard (R-004). Added 2026-09-18 in direct
+// response to both /arb-risk-review and /arb-hostile-review rejecting
+// 35_1000_USD_LIVE_TEST_PLAN.md section 8.2 on the same finding:
+// GuardSpreadLogic() checks only each leg's own bid-ask spread, never
+// quote age or cross-leg staleness, and would NOT have caught the
+// 2026-09-11 13:30:11 UTC anomaly (docs/02_quant/13_BASIS_MODEL.md) --
+// the futures leg repriced ~54 points in ~10 seconds while the spot
+// leg's ask stayed frozen at a normal-width, unremarkable spread.
+//
+// docs/02_quant/13_BASIS_MODEL.md's own finding: "per-leg price
+// velocity would have caught it, with a large margin" -- the single
+// highest-velocity tick in the entire 7-day/707,467-row dataset
+// (161.6 pts/sec, ~20x the p99.9 rate of 8.08 pts/sec) occurs one tick
+// before the anomaly row, while that row's own quote_skew_ms (238ms)
+// sits inside the still-unapproved 400ms staleness candidate -- skew
+// alone would still have missed it. Velocity is the layer that
+// actually catches this specific, real, historical failure mode.
+//
+// Every threshold here is an INPUT, not a literal -- NO MAGIC VALUES.
+// This file proposes no default; HarnessStage2_LivePilot.mq5's inputs
+// carry a reasoned-but-explicitly-UNCALIBRATED starting candidate
+// (see its own input comments), same pattern as InpMaxSpreadUsd and
+// InpMinMarginLevelPct already use.
+//====================================================================
+
+// Tick-to-tick price velocity, points/sec, magnitude only (direction
+// doesn't matter for a fast-market detector). Returns -1 (a value no
+// real velocity can take) when dt_ms<=0 -- a duplicate, out-of-order,
+// or unavailable timestamp pair must never silently read as "zero
+// movement, safe to proceed." The caller (GuardFastMarketLogic) is
+// responsible for treating -1 as a block, not a pass.
+double TickVelocityPtsPerSec(double prev_price, long prev_time_ms, double curr_price, long curr_time_ms)
+  {
+   long dt_ms = curr_time_ms - prev_time_ms;
+   if(dt_ms <= 0)
+      return -1;
+   double dprice = MathAbs(curr_price - prev_price);
+   return dprice / (dt_ms / 1000.0);
+  }
+
+// How old the most recent tick is, relative to "now" (both already in
+// the same clock domain -- the caller is responsible for that, exactly
+// as CurrentClockOffsetMs()'s own callers already are elsewhere in this
+// project). Floored at 0: a tick that appears to be from the future
+// (clock skew, not staleness) is a different failure mode, not this
+// guard's job to diagnose -- but it must never read as "negative age,
+// therefore very fresh."
+long QuoteAgeMs(long now_ms, long tick_time_ms)
+  {
+   long age = now_ms - tick_time_ms;
+   return (age < 0) ? 0 : age;
+  }
+
+// Cross-leg quote-skew, magnitude. Already known (13_BASIS_MODEL.md)
+// to be necessary but not sufficient alone -- kept here as a
+// supplementary signal, not the primary defense.
+long CrossLegSkewMs(long time_futures_ms, long time_spot_ms)
+  {
+   long diff = time_futures_ms - time_spot_ms;
+   return (diff < 0) ? -diff : diff;
+  }
+
+// Combined fast-market circuit breaker. Fail-safe like every other
+// guard in this file: any missing/invalid input (velocity<0 from an
+// unusable timestamp pair) blocks, never passes. Velocity is checked
+// on BOTH legs independently -- the anomaly this is built against was
+// a single-leg event (futures moved, spot didn't), and a leg-summed or
+// averaged check would have diluted exactly the signal that catches it.
+bool GuardFastMarketLogic(double velocity_futures_pts_sec, double velocity_spot_pts_sec,
+                           double max_velocity_pts_sec,
+                           long quote_age_futures_ms, long quote_age_spot_ms, long max_quote_age_ms,
+                           long cross_leg_skew_ms, long max_cross_leg_skew_ms)
+  {
+   if(velocity_futures_pts_sec < 0 || velocity_futures_pts_sec > max_velocity_pts_sec)
+      return false;
+   if(velocity_spot_pts_sec < 0 || velocity_spot_pts_sec > max_velocity_pts_sec)
+      return false;
+   if(quote_age_futures_ms > max_quote_age_ms)
+      return false;
+   if(quote_age_spot_ms > max_quote_age_ms)
+      return false;
+   if(cross_leg_skew_ms > max_cross_leg_skew_ms)
+      return false;
+   return true;
+  }

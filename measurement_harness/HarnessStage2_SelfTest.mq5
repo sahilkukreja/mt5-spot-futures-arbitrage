@@ -274,6 +274,128 @@ void Test_G12_FileRoundTrip()
    FileDelete(test_file); // leave no trace
   }
 
+//--------------------------------------------------------------------
+// G13-G17 -- the fast-market/stale-quote guard (R-004), added
+// 2026-09-18. G17 is the load-bearing one: it replays the ACTUAL
+// recorded prices and timestamps from the 2026-09-11 13:30 UTC
+// anomaly (docs/02_quant/13_BASIS_MODEL.md's own row-level table)
+// through GuardFastMarketLogic() and proves it would have blocked
+// that specific, real, historical event -- not a synthetic case
+// invented to make the guard look good.
+//--------------------------------------------------------------------
+void Test_G13_TickVelocityArithmetic()
+  {
+   // The documented maximum-velocity tick in the entire 7-day dataset:
+   // futures mid moved 34.25 points in 212ms, 2026-09-11 13:30:01.369
+   // to 13:30:01.581 UTC (13_BASIS_MODEL.md). ~161.6 pts/sec expected.
+   double v = TickVelocityPtsPerSec(4394.805, 0, 4360.555, 212);
+   bool matches_documented_extreme = (v > 160.0 && v < 163.0);
+
+   // Normal case: near the documented median (0.25 pts/sec) over a
+   // typical ~500ms interval.
+   double v_normal = TickVelocityPtsPerSec(4360.00, 0, 4360.13, 500);
+   bool normal_reasonable = (v_normal > 0.2 && v_normal < 0.3);
+
+   // Edge case: duplicate/out-of-order timestamp (dt<=0) must return
+   // -1, never silently read as "zero movement, safe."
+   bool dt_zero_is_sentinel = (TickVelocityPtsPerSec(4360.00, 100, 4360.00, 100) == -1);
+   bool dt_negative_is_sentinel = (TickVelocityPtsPerSec(4360.00, 200, 4360.00, 100) == -1);
+
+   bool pass = matches_documented_extreme && normal_reasonable && dt_zero_is_sentinel && dt_negative_is_sentinel;
+   ReportResult("G13", "Tick velocity arithmetic matches the documented 161.6 pts/sec extreme; dt<=0 returns sentinel -1",
+                pass, StringFormat("extreme_v=%.2f normal_v=%.4f dt_zero=%s dt_neg=%s",
+                      v, v_normal, dt_zero_is_sentinel?"T":"F", dt_negative_is_sentinel?"T":"F"));
+  }
+
+void Test_G14_QuoteAgeArithmetic()
+  {
+   bool normal    = (QuoteAgeMs(10000, 9500) == 500);
+   bool zero_age  = (QuoteAgeMs(10000, 10000) == 0);
+   bool future_tick_floors_at_zero = (QuoteAgeMs(10000, 10500) == 0); // clock skew, not staleness -- not this guard's job
+   bool pass = normal && zero_age && future_tick_floors_at_zero;
+   ReportResult("G14", "Quote age arithmetic: normal case correct, a from-the-future tick floors at 0 rather than going negative",
+                pass, StringFormat("normal=%s zero=%s future_floors=%s", normal?"T":"F", zero_age?"T":"F", future_tick_floors_at_zero?"T":"F"));
+  }
+
+void Test_G15_CrossLegSkewArithmetic()
+  {
+   // The R-004 anomaly row's own documented quote_skew_ms: 238.
+   bool matches_documented = (CrossLegSkewMs(11218, 10980) == 238);
+   bool symmetric = (CrossLegSkewMs(10980, 11218) == 238); // magnitude only, order-independent
+   bool zero_skew = (CrossLegSkewMs(5000, 5000) == 0);
+   bool pass = matches_documented && symmetric && zero_skew;
+   ReportResult("G15", "Cross-leg skew arithmetic matches the R-004 row's documented 238ms, magnitude only",
+                pass, StringFormat("matches=%s symmetric=%s zero=%s", matches_documented?"T":"F", symmetric?"T":"F", zero_skew?"T":"F"));
+  }
+
+void Test_G16_FastMarketGuardBoundaries()
+  {
+   // Candidate thresholds, matching HarnessStage2_LivePilot.mq5's own
+   // input defaults -- kept in sync manually since this is a self-test,
+   // not a shared constant (deliberate: a silent shared-constant drift
+   // would be worse than a caught mismatch on the next review).
+   double max_v = 20.0; long max_age = 2000; long max_skew = 400;
+
+   bool normal_passes = GuardFastMarketLogic(0.30, 0.25, max_v, 100, 150, max_age, 50, max_skew);
+   bool futures_velocity_blocks = !GuardFastMarketLogic(161.6, 0.25, max_v, 100, 150, max_age, 50, max_skew);
+   bool spot_velocity_blocks    = !GuardFastMarketLogic(0.30, 161.6, max_v, 100, 150, max_age, 50, max_skew);
+   bool stale_futures_blocks    = !GuardFastMarketLogic(0.30, 0.25, max_v, 5000, 150, max_age, 50, max_skew);
+   bool wide_skew_blocks        = !GuardFastMarketLogic(0.30, 0.25, max_v, 100, 150, max_age, 500, max_skew);
+   bool invalid_velocity_blocks = !GuardFastMarketLogic(-1, 0.25, max_v, 100, 150, max_age, 50, max_skew); // dt<=0 sentinel
+
+   bool pass = normal_passes && futures_velocity_blocks && spot_velocity_blocks && stale_futures_blocks
+               && wide_skew_blocks && invalid_velocity_blocks;
+   ReportResult("G16", "Fast-market guard: normal passes; velocity/age/skew breach on either leg blocks; invalid velocity fails closed",
+                pass, StringFormat("normal=%s fut_v=%s spot_v=%s stale=%s skew=%s invalid=%s",
+                      normal_passes?"T":"F", futures_velocity_blocks?"T":"F", spot_velocity_blocks?"T":"F",
+                      stale_futures_blocks?"T":"F", wide_skew_blocks?"T":"F", invalid_velocity_blocks?"T":"F"));
+  }
+
+// THE LOAD-BEARING TEST. Replays the actual recorded prices and
+// timestamps from docs/02_quant/13_BASIS_MODEL.md's row-level table
+// for the 2026-09-11 13:30 UTC anomaly -- the event both
+// /arb-risk-review and /arb-hostile-review used to reject
+// 35_1000_USD_LIVE_TEST_PLAN.md section 8.2. This is not a synthetic
+// case chosen to flatter the guard; these are the real recorded rows.
+void Test_G17_ReplayR004Anomaly()
+  {
+   // Row 13:30:01.369 UTC: fut_bid=4393.18 fut_ask=4396.43 -> mid=4394.805
+   // Row 13:30:01.581 UTC: fut_bid=4360.33 fut_ask=4360.78 -> mid=4360.555
+   // (the documented 161.6 pts/sec maximum-velocity tick of the whole dataset)
+   double fut_mid_t1 = (4393.18 + 4396.43) / 2.0;
+   double fut_mid_t2 = (4360.33 + 4360.78) / 2.0;
+   double velocity_futures = TickVelocityPtsPerSec(fut_mid_t1, 0, fut_mid_t2, 212);
+
+   // Spot over the same 212ms window (both legs were still moving together
+   // at this point -- the freeze happens in the NEXT window, see below).
+   double spot_mid_t1 = (4352.04 + 4352.39) / 2.0;
+   double spot_mid_t2 = (4322.16 + 4334.31) / 2.0;
+   double velocity_spot = TickVelocityPtsPerSec(spot_mid_t1, 0, spot_mid_t2, 212);
+
+   // Candidate thresholds -- same as G16, matching the live file's inputs.
+   double max_v = 20.0; long max_age = 2000; long max_skew = 400;
+
+   // At the anomaly row itself (13:30:11.218), quote_skew_ms=238 as
+   // documented directly in 13_BASIS_MODEL.md -- confirming the
+   // project's own prior finding that skew ALONE (238 < candidate 400)
+   // would NOT have blocked this event; quote age assumed fresh (0) for
+   // this specific check, isolating the skew term.
+   bool skew_alone_insufficient = GuardFastMarketLogic(0, 0, max_v, 0, 0, max_age, 238, max_skew);
+
+   // The actual guard, with the real recorded velocity on both legs:
+   // must block, via the velocity term, exactly as 13_BASIS_MODEL.md's
+   // own conclusion states ("per-leg price velocity would have caught
+   // it, with a large margin").
+   bool guard_blocks_the_real_event = !GuardFastMarketLogic(velocity_futures, velocity_spot, max_v,
+                                                              0, 0, max_age, 238, max_skew);
+
+   bool pass = skew_alone_insufficient && guard_blocks_the_real_event;
+   ReportResult("G17", "REPLAY of the real 2026-09-11 13:30 UTC anomaly: skew alone (238ms) would NOT have "
+                "blocked it (confirms prior finding); velocity DOES block it",
+                pass, StringFormat("velocity_futures=%.2f velocity_spot=%.2f skew_alone_insufficient=%s guard_blocks=%s",
+                      velocity_futures, velocity_spot, skew_alone_insufficient?"T":"F", guard_blocks_the_real_event?"T":"F"));
+  }
+
 //====================================================================
 // Entry point.
 //====================================================================
@@ -305,6 +427,11 @@ int OnInit()
    Test_G10_LossPortionAsymmetry();
    Test_G11_DealPnLArithmetic();
    Test_G12_FileRoundTrip();
+   Test_G13_TickVelocityArithmetic();
+   Test_G14_QuoteAgeArithmetic();
+   Test_G15_CrossLegSkewArithmetic();
+   Test_G16_FastMarketGuardBoundaries();
+   Test_G17_ReplayR004Anomaly();
 
    Print("=====================================================================");
    Print(StringFormat("STAGE 2 GUARDS SELF-TEST RESULT: %d PASS, %d FAIL", g_pass_count, g_fail_count));
