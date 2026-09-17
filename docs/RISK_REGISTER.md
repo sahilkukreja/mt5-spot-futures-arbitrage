@@ -432,13 +432,23 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   flatten actually succeeded -- inconsistent with the other two flatten-failure paths, which correctly halt.
   Never triggered in either real run (`r1` was `LEG_FILLED` both times), caught on review, not from a
   failure. Now mirrors the other two paths exactly.
-- **Mitigation:** recompiled clean (0 errors). **Not yet re-run** -- this is new code exercising new paths
-  (`GetDealPnL`, the fixed `LEG_PARTIAL` branch, `RecordRealizedPnL`) that pair 1's two real runs never
-  touched. Do not treat a clean compile as evidence it works, per this project's own standing rule.
+- **Mitigation:** recompiled clean (0 errors). The pure arithmetic this fix depends on --
+  `LossPortion()` (only losses accumulate, profits contribute exactly 0) and
+  `DealPnLFromComponents()` (`profit + swap + commission`) -- was extracted into
+  `HarnessStage2_Guards.mqh` and is now genuinely tested: `HarnessStage2_SelfTest.mq5` ran on the VPS
+  terminal 2026-09-17 18:30, **12/12 PASS**, including G10 (loss-only asymmetry) and G11 (P&L component
+  arithmetic) specifically. See `measurement_harness/README.md` -> "Testability architecture".
+- **Still not verified: the real-API half.** `GetDealPnL()`'s `HistoryDealSelect`/`HistoryDealGetDouble`
+  calls, `CloseLegByTicket()`'s new exit-price capture, `RecordRealizedPnL()`'s call site in `RunOnePair()`,
+  and `PairSummaryWrite()` are all real-API code the self-test does not and cannot touch -- they need a real
+  closed pair. This is new code exercising new paths (`GetDealPnL`, the fixed `LEG_PARTIAL` branch,
+  `RecordRealizedPnL`) that pair 1's two real runs never touched. Do not treat the self-test PASS as evidence
+  this half works, per this project's own standing rule.
 - **Trigger/metric:** the next real pair's `PAIR_SUMMARY_FILE` row and Experts log realized-P&L line should
   be cross-checked against the terminal's own Trade History, same standard as every other real run.
 - **Owner:** whoever runs the next pair.
-- **Status:** fixed, unverified against real execution.
+- **Status:** fixed; pure logic verified (self-test, 12/12 PASS, 2026-09-17); real-API integration still
+  unverified against real execution.
 
 ### R-012: Budget guards are per-terminal state, not a true global cap, if run from more than one place
 - **Raised:** 2026-09-17, prompted by the account owner standardizing on a VPS (Administrator user, terminal

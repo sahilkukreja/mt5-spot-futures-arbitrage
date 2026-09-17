@@ -22,8 +22,8 @@ needs a full, reviewed design first.
 |---|---|---|
 | `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | **Verified.** 12/12 PASS, confirmed by real execution, 2026-09-16. |
 | `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pair 1 completed successfully, 2026-09-17**, after one real bug found and fixed on the prior attempt (close path used the wrong ticket type in Hedge mode). `InpMaxPairs` still 1 — see "Second real run" below before raising it. Places real orders. |
-| `HarnessStage2_Guards.mqh` | Stage 2 — pure decision logic | Compiles clean. No broker/account API call anywhere in it (checkable by grep). See "Testability architecture" below. |
-| `HarnessStage2_SelfTest.mq5` | Stage 2 — guard self-test | Compiled clean, **not yet executed by the account owner.** Tests every function in the `.mqh` above; does not touch a broker. |
+| `HarnessStage2_Guards.mqh` | Stage 2 — pure decision logic | **Verified.** 12/12 PASS via `HarnessStage2_SelfTest.mq5`, confirmed by real execution, 2026-09-17. No broker/account API call anywhere in it (checkable by grep). |
+| `HarnessStage2_SelfTest.mq5` | Stage 2 — guard self-test | **Verified.** 12/12 PASS, confirmed by real execution on the VPS terminal, 2026-09-17. Tests every function in the `.mqh` above; does not touch a broker. |
 
 Stage 1 (demo shakedown) was skipped by explicit account-owner decision — see `RISK_REGISTER.md` R-010 and
 `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 8. No Stage 1 file exists or will.
@@ -263,9 +263,13 @@ and boundary cases — and reports PASS/FAIL to the Experts log and to
   because it belongs conceptually in the `.mqh` (file I/O is deliberately left out of the pure-logic file).
 
 **Compiled clean**, MetaEditor64, 0 errors, 1 harmless warning (version-string format) — same standard as
-every other file here. **Not yet run by the account owner.** Per this project's own stated principle, a clean
-compile is not evidence any of these tests actually pass; only an Experts-log PASS count is. Attach it to any
-chart on any account — like Stage 0, it makes no account calls, so which account is logged in is irrelevant.
+every other file here. **Executed by the account owner on the VPS terminal, 2026-09-17 18:30: 12/12 PASS**
+(`GC-Z26,H1` chart, `HarnessStage2_SelfTest`), every one of G1–G12 reporting `PASS` with its full diagnostic
+detail in the Experts log, matching the expected values exactly (e.g. G9's budget-guard priority test showed
+`priority=KILL_SWITCH` even with a simultaneous max-pairs condition, confirming the kill switch is checked
+first as designed). Results also written to `arb_harness_stage2_selftest_results.csv` in that terminal's
+`MQL5/Files/` folder. Attach it to any chart on any account — like Stage 0, it makes no account calls, so
+which account is logged in is irrelevant.
 
 **What this does not cover, stated explicitly so it isn't mistaken for full coverage:** `ExecuteLeg()`,
 `CloseLegByTicket()`, `BrokerHasKey()`, `StartupReconciling()`, and the real-value-gathering half of every
