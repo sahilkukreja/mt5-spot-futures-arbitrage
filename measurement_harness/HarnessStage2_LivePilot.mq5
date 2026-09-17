@@ -33,6 +33,13 @@
 #property version   "0.100"
 #property strict
 
+// All pure decision logic (retry whitelist, guards, P&L semantics) lives
+// in this shared include, so it can be exhaustively tested by
+// HarnessStage2_SelfTest.mq5 without a broker connection. Functions
+// below with the same name minus "Logic"/"Components" are thin
+// wrappers: gather a real value, delegate the decision here.
+#include "HarnessStage2_Guards.mqh"
+
 //====================================================================
 // Inputs. Every numeric value here is UNCALIBRATED -- a starting value
 // derived in docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md section 6,
@@ -154,30 +161,12 @@ string StateName(ENUM_HARNESS_STATE s)
 
 ENUM_HARNESS_STATE g_state = STATE_STARTUP_RECONCILING;
 
-//====================================================================
-// Retry whitelist -- IDENTICAL logic to HarnessStage0_DryRun.mq5's
-// IsTransientRetcode(), now over real MT5 TRADE_RETCODE_* values.
-// Mirrors MMT_TradePannel_Pro_v284.cpp's ShouldRetry(): explicit
-// transient cases, default:false. Pair 1's procedure requires checking
-// every retcode actually received against MT5 documentation directly,
-// not trusting this whitelist on faith -- it has never faced a real
-// broker before this file's first run.
-//====================================================================
-bool IsTransientRetcode(int retcode)
-  {
-   switch(retcode)
-     {
-      case TRADE_RETCODE_REQUOTE:
-      case TRADE_RETCODE_PRICE_CHANGED:
-      case TRADE_RETCODE_PRICE_OFF:
-      case TRADE_RETCODE_TIMEOUT:
-      case TRADE_RETCODE_CONNECTION:
-      case TRADE_RETCODE_TOO_MANY_REQUESTS:
-         return true;
-      default:
-         return false;
-     }
-  }
+// IsTransientRetcode() and RetcodeDescription() now live in
+// HarnessStage2_Guards.mqh -- pure functions, exhaustively tested by
+// HarnessStage2_SelfTest.mq5. Pair 1's procedure still requires
+// checking every retcode actually received against MT5's own
+// documentation directly on a real run; this whitelist is not a
+// substitute for that, only a starting point derived from it.
 
 //====================================================================
 // Journal -- same schema as Stage 0, extended per section 5 with dual
@@ -236,10 +225,7 @@ void JournalWrite(const string run_id, int pair_seq, int leg_id, int attempt,
    FileFlush(g_journal_handle);
   }
 
-string MakeIdemKey(const string run_id, int pair_seq, int leg_id, int attempt)
-  {
-   return StringFormat("H%s-P%d-L%d-A%d", run_id, pair_seq, leg_id, attempt);
-  }
+// MakeIdemKey() now lives in HarnessStage2_Guards.mqh.
 
 //====================================================================
 // Clock domains (section 5.1 / FF-5). GetTickCount64() is monotonic
@@ -292,29 +278,30 @@ long ServerMsToLocalEquivalent(long server_ms)
 string  g_whitelisted_account_note = "";
 long    g_whitelisted_account = -1;
 
+// Thin wrappers below: gather a real value, delegate the decision to
+// HarnessStage2_Guards.mqh's *Logic() function. Only the Logic
+// functions are exercised by HarnessStage2_SelfTest.mq5 -- these
+// wrappers themselves still require a broker connection and are
+// exactly what pair-by-pair real runs continue to validate.
+
 bool GuardAccountWhitelisted()
   {
    long current = AccountInfoInteger(ACCOUNT_LOGIN);
-   if(g_whitelisted_account <= 0)
-      return false;
-   return current == g_whitelisted_account;
+   return GuardAccountWhitelistedLogic(current, g_whitelisted_account);
   }
 
 bool GuardAccountIsReal()
   {
-   return (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_REAL;
+   ENUM_ACCOUNT_TRADE_MODE mode = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
+   return GuardAccountIsRealLogic(mode);
   }
 
 bool GuardExpiry()
   {
    datetime expiry = StringToTime(InpExpiryHardStopDate);
    if(expiry == 0)
-     {
       Print("FATAL: cannot parse InpExpiryHardStopDate");
-      return false;
-     }
-   datetime cutoff = (datetime)((long)expiry - InpExpiryBufferDays * 86400);
-   return TimeCurrent() < cutoff;
+   return GuardExpiryLogic(TimeCurrent(), expiry, InpExpiryBufferDays);
   }
 
 bool GuardSpread()
@@ -322,9 +309,7 @@ bool GuardSpread()
    MqlTick tf, ts;
    if(!SymbolInfoTick(InpSymbolFutures, tf) || !SymbolInfoTick(InpSymbolSpot, ts))
       return false;
-   double spread_f = tf.ask - tf.bid;
-   double spread_s = ts.ask - ts.bid;
-   return (spread_f < InpMaxSpreadUsd) && (spread_s < InpMaxSpreadUsd);
+   return GuardSpreadLogic(tf.ask - tf.bid, ts.ask - ts.bid, InpMaxSpreadUsd);
   }
 
 bool GuardMarginLevel()
@@ -338,11 +323,8 @@ bool GuardMarginLevel()
       return false;
    double equity = AccountInfoDouble(ACCOUNT_EQUITY);
    double current_margin = AccountInfoDouble(ACCOUNT_MARGIN);
-   double projected_margin = current_margin + margin_f + margin_s;
-   if(projected_margin <= 0)
-      return true; // no margin required -- guard does not apply
-   double projected_level_pct = 100.0 * equity / projected_margin;
-   return projected_level_pct > InpMinMarginLevelPct;
+   double level_pct;
+   return GuardMarginLevelLogic(equity, current_margin, margin_f, margin_s, InpMinMarginLevelPct, level_pct);
   }
 
 bool GuardConcurrency()
@@ -440,32 +422,16 @@ void TripKillSwitch(const string reason)
 
 bool GuardBudgets(double projected_worst_case_loss)
   {
-   if(g_kill_switch_tripped)
-     {
-      Print("BLOCKED: kill switch is latched (", g_kill_switch_reason, ")");
-      return false;
-     }
-   if(g_pairs_total >= InpMaxPairs)
-     {
-      Print("BLOCKED: InpMaxPairs (", InpMaxPairs, ") reached for this run");
-      return false;
-     }
-   if(g_pairs_today >= InpMaxPairsPerDay)
-     {
-      Print("BLOCKED: InpMaxPairsPerDay (", InpMaxPairsPerDay, ") reached");
-      return false;
-     }
-   if(g_daily_loss_usd + projected_worst_case_loss > InpMaxDailyLossUsd)
-     {
-      Print("BLOCKED: would risk exceeding InpMaxDailyLossUsd (", InpMaxDailyLossUsd, ")");
-      return false;
-     }
-   if(g_cumulative_loss_usd + projected_worst_case_loss > InpMaxCumulativeLossUsd)
-     {
-      Print("BLOCKED: would risk exceeding InpMaxCumulativeLossUsd (", InpMaxCumulativeLossUsd, ")");
-      return false;
-     }
-   return true;
+   ENUM_BUDGET_BLOCK block = GuardBudgetsLogic(g_kill_switch_tripped, g_pairs_total, InpMaxPairs,
+      g_pairs_today, InpMaxPairsPerDay, g_daily_loss_usd, projected_worst_case_loss, InpMaxDailyLossUsd,
+      g_cumulative_loss_usd, InpMaxCumulativeLossUsd);
+   if(block == BUDGET_OK)
+      return true;
+   Print("BLOCKED: ", BudgetBlockName(block), " (kill_switch_reason='", g_kill_switch_reason, "', ",
+         "pairs=", g_pairs_total, "/", InpMaxPairs, " today=", g_pairs_today, "/", InpMaxPairsPerDay,
+         " daily=$", g_daily_loss_usd, "/", InpMaxDailyLossUsd,
+         " cumulative=$", g_cumulative_loss_usd, "/", InpMaxCumulativeLossUsd, ")");
+   return false;
   }
 
 // FIX (R-011, 2026-09-17): this is the piece that was entirely missing
@@ -487,7 +453,7 @@ bool GuardBudgets(double projected_worst_case_loss)
 // budget; it does not fund a later, larger loss.
 void RecordRealizedPnL(double pnl_usd)
   {
-   double loss = (pnl_usd < 0) ? -pnl_usd : 0.0;
+   double loss = LossPortion(pnl_usd);
    g_daily_loss_usd += loss;
    g_cumulative_loss_usd += loss;
   }
@@ -698,37 +664,7 @@ ENUM_LEG_RESULT ExecuteLeg(const string run_id, int pair_seq, int leg_id,
    return LEG_FAILED_NONTRANSIENT;
   }
 
-string RetcodeDescription(int retcode)
-  {
-   // MT5 does not expose a built-in retcode->string function usable
-   // here without CTrade; this is a partial, human-maintained mapping
-   // for the common cases. Pair 1's procedure explicitly requires
-   // checking the ACTUAL retcode integer against MT5's own
-   // documentation directly -- do not trust this mapping alone.
-   switch(retcode)
-     {
-      case TRADE_RETCODE_REQUOTE:            return "REQUOTE";
-      case TRADE_RETCODE_REJECT:             return "REJECT";
-      case TRADE_RETCODE_INVALID:            return "INVALID";
-      case TRADE_RETCODE_INVALID_VOLUME:     return "INVALID_VOLUME";
-      case TRADE_RETCODE_INVALID_PRICE:      return "INVALID_PRICE";
-      case TRADE_RETCODE_INVALID_STOPS:      return "INVALID_STOPS";
-      case TRADE_RETCODE_TRADE_DISABLED:     return "TRADE_DISABLED";
-      case TRADE_RETCODE_MARKET_CLOSED:      return "MARKET_CLOSED";
-      case TRADE_RETCODE_NO_MONEY:           return "NO_MONEY";
-      case TRADE_RETCODE_PRICE_CHANGED:      return "PRICE_CHANGED";
-      case TRADE_RETCODE_PRICE_OFF:          return "PRICE_OFF";
-      case TRADE_RETCODE_TIMEOUT:            return "TIMEOUT";
-      case TRADE_RETCODE_DONE:               return "DONE";
-      case TRADE_RETCODE_DONE_PARTIAL:       return "DONE_PARTIAL";
-      case TRADE_RETCODE_ERROR:              return "ERROR";
-      case TRADE_RETCODE_CONNECTION:         return "CONNECTION";
-      case TRADE_RETCODE_TOO_MANY_REQUESTS:  return "TOO_MANY_REQUESTS";
-      case TRADE_RETCODE_LOCKED:             return "LOCKED";
-      case TRADE_RETCODE_FROZEN:             return "FROZEN";
-      default: return "UNMAPPED_" + IntegerToString(retcode);
-     }
-  }
+// RetcodeDescription() now lives in HarnessStage2_Guards.mqh.
 
 // Returns a deal's full realized contribution to account P&L --
 // profit + swap + commission, all in account currency (USD here).
@@ -739,9 +675,10 @@ double GetDealPnL(ulong deal_ticket)
   {
    if(deal_ticket == 0 || !HistoryDealSelect(deal_ticket))
       return 0;
-   return HistoryDealGetDouble(deal_ticket, DEAL_PROFIT)
-        + HistoryDealGetDouble(deal_ticket, DEAL_SWAP)
-        + HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION);
+   return DealPnLFromComponents(
+      HistoryDealGetDouble(deal_ticket, DEAL_PROFIT),
+      HistoryDealGetDouble(deal_ticket, DEAL_SWAP),
+      HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION));
   }
 
 // Emergency close of a filled leg by ticket -- used for rollback when

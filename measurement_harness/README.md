@@ -22,6 +22,8 @@ needs a full, reviewed design first.
 |---|---|---|
 | `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | **Verified.** 12/12 PASS, confirmed by real execution, 2026-09-16. |
 | `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pair 1 completed successfully, 2026-09-17**, after one real bug found and fixed on the prior attempt (close path used the wrong ticket type in Hedge mode). `InpMaxPairs` still 1 — see "Second real run" below before raising it. Places real orders. |
+| `HarnessStage2_Guards.mqh` | Stage 2 — pure decision logic | Compiles clean. No broker/account API call anywhere in it (checkable by grep). See "Testability architecture" below. |
+| `HarnessStage2_SelfTest.mq5` | Stage 2 — guard self-test | Compiled clean, **not yet executed by the account owner.** Tests every function in the `.mqh` above; does not touch a broker. |
 
 Stage 1 (demo shakedown) was skipped by explicit account-owner decision — see `RISK_REGISTER.md` R-010 and
 `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 8. No Stage 1 file exists or will.
@@ -217,6 +219,59 @@ running daily/cumulative totals — so a pair's outcome is readable without cros
 
 Recompiled clean (0 errors). **Not yet run.** This exercises code paths pair 1's two real runs never touched.
 Same standard as always: a clean compile is not evidence it works.
+
+### Testability architecture — pure logic split out for self-testing, 2026-09-17
+
+Unlike Stage 0 (pure logic from inception), Stage 2's guard functions originally called real MT5 APIs
+directly (`AccountInfoInteger`, `SymbolInfoTick`, `AccountInfoDouble`, etc.), which made them impossible to
+exercise without a live broker connection — exactly the "a clean compile is not evidence it works" gap this
+project keeps running into, except this time for logic that had never been run at all, adversarial or
+otherwise.
+
+**Fix:** every piece of pure decision logic — the retry whitelist, retcode name mapping, idempotency key
+format, and all five section-6 guards (account whitelist, live-account-only, expiry, spread, margin level,
+budgets) plus the loss-only realized-P&L arithmetic R-011 depends on — moved into `HarnessStage2_Guards.mqh`.
+Every function there takes its inputs as plain parameters and returns a decision; none of them call
+`AccountInfo*`, `SymbolInfoTick`, `OrderSend`, `PositionSelectByTicket`, or any other MT5 trading/account/
+market-data API. This is checkable directly, the same way Stage 0's claim is:
+`grep -niE "AccountInfo|SymbolInfoTick|OrderSend|PositionSelect|CTrade" HarnessStage2_Guards.mqh` returns
+nothing outside comments.
+
+`HarnessStage2_LivePilot.mq5`'s own guard functions (`GuardAccountWhitelisted()`, `GuardSpread()`, etc.) are
+now thin wrappers: gather the real values, call the matching `*Logic()` function in the `.mqh`, translate the
+result to a `Print()` plus bool/enum. The wrapper's own gathering code is *not* covered by the self-test below
+— only a real run exercises `AccountInfoInteger`, `SymbolInfoTick`, `OrderCalcMargin`, `OrderSend`, and
+`PositionSelectByTicket` themselves.
+
+`HarnessStage2_SelfTest.mq5` is the actual test suite, structured like `HarnessStage0_DryRun.mq5`: it
+`#include`s the `.mqh`, calls every function in it with injected values — including deliberately adversarial
+and boundary cases — and reports PASS/FAIL to the Experts log and to
+`arb_harness_stage2_selftest_results.csv`. What it covers:
+
+- **G1–G3**: retry whitelist (every transient retcode, a representative set of non-transient ones, and one
+  unmapped value to confirm the `default:false` fail-closed path), retcode-name mapping, idempotency key
+  format.
+- **G4–G8**: each of the five section-6 guards, including their fail-closed edge cases specifically —
+  unset/negative whitelist, non-real account modes, the expiry cutoff boundary (one second before vs. exactly
+  at), spread exactly at the max (strict `<`, not `<=`), and the `projected_margin<=0` edge case in the margin
+  guard.
+- **G9**: the budget guard's all six distinct outcomes individually, plus the priority ordering — kill switch
+  must win even when another block condition is also true, since it's checked first.
+- **G10–G11**: the loss-only P&L asymmetry (a profit must contribute exactly 0 to the loss counters, never a
+  negative "credit"), and the deal P&L component arithmetic.
+- **G12**: a local file write/read round-trip, included because it's free to test and touches no broker, not
+  because it belongs conceptually in the `.mqh` (file I/O is deliberately left out of the pure-logic file).
+
+**Compiled clean**, MetaEditor64, 0 errors, 1 harmless warning (version-string format) — same standard as
+every other file here. **Not yet run by the account owner.** Per this project's own stated principle, a clean
+compile is not evidence any of these tests actually pass; only an Experts-log PASS count is. Attach it to any
+chart on any account — like Stage 0, it makes no account calls, so which account is logged in is irrelevant.
+
+**What this does not cover, stated explicitly so it isn't mistaken for full coverage:** `ExecuteLeg()`,
+`CloseLegByTicket()`, `BrokerHasKey()`, `StartupReconciling()`, and the real-value-gathering half of every
+guard wrapper. Those touch `OrderSend`, `PositionSelectByTicket`, and `HistoryDealSelect` against a real
+broker connection, and can only be validated by an actual pair run — the same boundary Stage 0's own
+"Known limitation" section already draws for its own restart-simulation logic.
 
 ### What is intentionally not yet implemented
 
