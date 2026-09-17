@@ -426,6 +426,30 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   P&L cannot be computed from the journal or Experts log alone, only from the terminal's own Trade History.
   Worth fixing together with the realized-P&L summing above, not yet done.
 
+### R-012: Budget guards are per-terminal state, not a true global cap, if run from more than one place
+- **Raised:** 2026-09-17, prompted by the account owner standardizing on a VPS (Administrator user, terminal
+  D0E8209F77C8CF37AD8BF550E51FF075) for stable execution and lower latency -- the same environment pair 1
+  already ran successfully on.
+- **Cause:** `InpMaxDailyLossUsd`, `InpMaxCumulativeLossUsd`, and `InpMaxPairsPerDay` are all tracked in
+  `arb_harness_stage2_daily_state.txt`, a file local to whichever terminal's `MQL5/Files/` the EA runs from.
+  Nothing links that state across two different terminals, even if both are whitelisted to the same account
+  number.
+- **Consequence:** if the EA is ever run from both the VPS and the original local-machine terminal -- even
+  once, even by accident (a wrong click, muscle memory, someone else with access to either machine) -- each
+  keeps its own independent counters. The USD 250 cumulative-loss cap would not be a true cap across both
+  environments; worst case, up to USD 250 could be spent from each, independently, before either one's guard
+  would ever see the other's activity. The whitelist guard (C4) does not catch this, because both
+  environments legitimately whitelist the same account.
+- **Severity:** medium -- does not defeat any single guard's own logic, but defeats the *aggregate* budget
+  the guards exist to enforce, across environments.
+- **Mitigation:** **the VPS is now the sole environment this EA ever runs from.** The local machine's copy of
+  `stage2_live_config.txt` should be deleted or renamed so it cannot fire even by accident. This is a
+  procedural control, not a code fix -- a true cross-terminal shared-state mechanism (e.g. reading the budget
+  state from the broker's own account history rather than a local file) is future work, not attempted here.
+- **Trigger/metric:** any attempt to attach this EA to a chart anywhere other than the designated VPS.
+- **Owner:** the account owner.
+- **Status:** open -- mitigated procedurally (single-environment rule), not resolved in code.
+
 ---
 
 No further risks recorded yet.

@@ -224,6 +224,26 @@ into a doc, and never logged by the harness. Connection details belong in a loca
 pattern `tools/` already uses), read by the harness at runtime, never hardcoded and never committed. This is
 condition C4, and is load-bearing now that a real account number exists — see §8.1.1.
 
+### 7.1 Execution environment — standardized on a VPS, 2026-09-17
+
+The account owner is standardizing on a VPS for stable execution and lower latency — the same environment
+pair 1's successful run already used (Administrator user profile, terminal
+`D0E8209F77C8CF37AD8BF550E51FF075`). This is a sound operational decision independent of this trial: lower,
+more stable latency is directly relevant to what Stage 2 measures, and a VPS closer to the broker is a normal
+precondition for any eventual production system (`06_operations/50_VPS_ARCHITECTURE.md`, not yet written, is
+where that would be formally designed).
+
+**This creates a real risk, recorded as R-012: every budget guard (`InpMaxDailyLossUsd`,
+`InpMaxCumulativeLossUsd`, `InpMaxPairsPerDay`) is tracked in a file local to whichever terminal runs the
+EA.** Running from two terminals — even the original local-machine one, even once, even by accident — gives
+each its own independent counters with no shared view of the other's spend, defeating the aggregate budget
+the guards exist to enforce.
+
+**Rule, effective now: the VPS is the sole environment this EA ever runs from.** The local machine's copy of
+`stage2_live_config.txt` should be deleted or renamed so it cannot fire even by accident. This is procedural,
+not enforced in code — a genuine cross-terminal shared-state mechanism (e.g. deriving budget state from the
+broker's own account history rather than a local file) is future work, not attempted here.
+
 ## 8. Staged protocol
 
 Each stage gated on the previous.
