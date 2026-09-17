@@ -417,7 +417,13 @@ that needed a workaround to pass.
 
 ## 8.2 Stage 3/4 — operational procedure (design draft, 2026-09-17 — `/arb-risk-review` REJECT, `/arb-hostile-review` NOT READY)
 
-**Status: reviewed, rejected in current form, revision required.** Stage 2 has completed 2 of its required 10
+**Status: reviewed, rejected in current form, revision proposed 2026-09-18, not re-reviewed.** Concrete
+resolutions to mitigations 2, 3, 5, and 7 are proposed below ("Proposed resolutions to mitigations 2–7"); a
+formula for mitigation 4 is proposed but unverified; mitigation 1 (the fast-market guard) has a working,
+replay-tested implementation, not yet run for real; mitigation 6 (broker ToS) is explicitly blocked on the
+account owner, not resolvable in this session. None of this constitutes a passed re-review — `/arb-risk-review`
+and `/arb-hostile-review` must both run again against the revised section before Stage 3/4 moves at all.
+Stage 2 has completed 2 of its required 10
 pairs as of this writing (§8.1.4 is not yet met). This section exists so Stage 3/4's design can be thought
 through and reviewed ahead of time, the same way Stage 2's design (§8.1) was written, risk-reviewed, and
 hostile-reviewed *before* a single line
@@ -483,6 +489,56 @@ Required mitigations, in priority order:
    automated fires.
 7. **Expiry-timeline feasibility check** — confirm n=300 actually fits before the ~2026-11-11 buffer cutoff,
    accounting for Stage 2's remaining 8 pairs and this review cycle itself. Not computed anywhere yet.
+
+### Proposed resolutions to mitigations 2–7, 2026-09-18 — design proposals, not implemented, not reviewed
+
+No Stage 3/4 code exists (correctly — Stage 2 isn't done, and this section hasn't cleared review). These are
+concrete proposals to close each open mitigation at the design level, so the re-review has something specific
+to evaluate rather than an open list. **None of this is authorized; all of it needs the same review cycle.**
+
+**Mitigation 2 — weekly drawdown limit.** Propose `InpMaxWeeklyLossUsd`, deliberately *tighter* than
+`5 × InpMaxDailyLossUsd` (which would never bind independently of the daily cap) — a candidate starting value
+of **≈$100 (2.5× the daily cap)**, UNCALIBRATED like every other limit here, forces a pause if losses cluster
+across several days within a week even when no single day hits its own $40 cap. Needs a `g_weekly_loss_usd`
+counter with its own broker-day-boundary reset logic (ISO week, not calendar-day) mirroring the existing
+daily/cumulative persistence pattern in `HarnessStage2_LivePilot.mq5`.
+
+**Mitigation 3 — dual stratum quotas.** No new guard function needed, contrary to the original (wrong) claim.
+`GuardBudgetsLogic()` already returns `BUDGET_MAX_PAIRS` from a single `(pairs_total, max_pairs)` pair —
+**call it twice**: once with `(pairs_total_all, InpMaxPairs=300)` for the global ceiling, once with
+`(pairs_total_this_stratum, InpMaxPairsStratumA=200` or `InpMaxPairsStratumB=100)` for the stratum-specific
+one. Either call returning non-`BUDGET_OK` blocks. This reuses the existing pure function exactly as
+originally (wrongly) claimed — the fix is in the *call site*, not the guard logic itself.
+
+**Mitigation 4 — stratum B sampling weight.** Standard post-stratification weighting, using the already-
+measured combined trigger-condition frequency (~0.9% of ticks, §4, sourced): stratum A pairs get weight 1
+(unconditional design). Stratum B pairs get weight ≈ `p_trigger / n_stratum_B_actual` where `p_trigger≈0.009`
+is the measured population proportion in the trigger region and `n_stratum_B_actual` is the realized stratum
+B sample size (target 100). This is the standard Horvitz-Thompson-style correction for an exhaustively-
+sampled rare stratum combined with an unconditional random sample of the whole population — **proposed, not
+derived from this project's own data yet**; needs checking against `13_BASIS_MODEL.md`'s actual trigger-rate
+methodology before being trusted, and should be re-verified once real stratum B data exists (the realized
+trigger rate in a live 300-pair run may not exactly match the 7-day-dataset-derived 0.9%).
+
+**Mitigation 5 — stratum B cooldown.** Propose a minimum inter-fire spacing `InpStratumBCooldownMs`, sized
+to exceed the longest observed R-004-class event duration (~17 seconds, the 2026-09-04 anomaly's own window)
+by a comfortable margin — candidate **60,000ms (60s)**, UNCALIBRATED, reasoned as "several multiples of the
+longest single observed anomalous-event duration so a cluster of fires from one underlying event reads as one
+sample, not several correlated ones," not derived from a formal autocorrelation analysis of the trigger
+condition itself (not yet done).
+
+**Mitigation 6 — broker terms-of-service check.** **Blocked on the account owner, not something this session
+can resolve.** Contacting the broker (or reading their published terms) for automated-trading, order-
+frequency, and strategy-restriction language is an external action outside what a coding session can
+fabricate or verify. Recorded here as explicitly open pending that check, not silently skipped.
+
+**Mitigation 7 — expiry-timeline feasibility.** Today (2026-09-18) to the ~2026-11-11 buffer cutoff is **≈54
+days**. Stage 2 needs 8 more pairs (manual, operator-paced — the real constraint is supervision time, not
+mechanics) plus a re-review cycle for this section (historically ~1 day per review, 2 reviews). Stage 3/4's
+own n=300 is bounded operationally by `InpMaxPairsPerDay=50` (6 days at the cap) but realistically wants
+supervision spread over **2–3 weeks**, not run at the daily cap unsupervised. **Total: feasible within the
+54-day window, but without large slack** (roughly 4–6 weeks of the 7.7 available) — do not let Stage 2 or the
+re-review cycle linger; this is a real, if not urgent, timeline constraint, not a comfortable margin.
 
 Once addressed, `/arb-risk-review` and `/arb-hostile-review` both re-run against the revised section — the
 same cycle Stage 2's design went through, not a one-time exception for this stage.
