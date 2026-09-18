@@ -25,17 +25,20 @@ are empty stubs. `04_testing/` has real, extensive content (`34_DEMO_TEST_PLAN.m
 `35_1000_USD_LIVE_TEST_PLAN.md`) — not empty, corrected 2026-09-18. `06_operations/` has
 `PHASE_GRADUATION_CRITERIA.md` — not empty, corrected 2026-09-18. `05_development/` is still empty.
 
-**`02_quant/15_SIGNAL_RESEARCH.md` is written, 2026-09-18 — first pass, no edge found yet, not a final
-answer.** Tested whether the carry-baseline residual (mean-reversion candidate) reverts far enough to clear
-round-trip cost via a threshold-crossing event study (3 percentile thresholds × 3 fixed horizons, 45-day
-dataset). **Result: no net-of-round-trip-cost edge in any of the 9 combinations tested, gross of slippage**
-(best case only cleared cost 46% of the time). Real, recorded negative result — not proof no formulation
-could work (fixed `r̂` instead of the proposal's own rolling estimate, and fixed-horizon exit instead of
-proper reversion-triggered exit, are both untested refinements). Smallest next test: re-run with a
-rolling/lagged `r̂`. An external candidate proposal, `docs/Gold-Basis-EA-Strategy-and-System-Design.md`
-(tracked, not accepted, `/arb-hostile-review` NOT READY), motivated this test but is not itself what was
-tested — its own more sophisticated specification (rolling baseline, regime filtering, proper exit policy)
-remains unexplored.
+**`02_quant/15_SIGNAL_RESEARCH.md` is written, 2026-09-18 — second pass. One promising lead (rolling `r̂`),
+NOT yet validated out-of-sample; momentum hypothesis refuted; reverse-hedge inconclusive.** First pass:
+fixed-`r̂` threshold-crossing event study found no net-of-round-trip-cost edge in any of 9 combinations
+(gross of slippage), best case cleared cost only 46% of the time. Second pass tested a **causal rolling 24h
+carry-rate estimate** instead — categorically different result: **p99 threshold, 240min exit: mean net
+capture +$0.65, clearing round-trip cost in 86% of 145 entries** (`analyze_signal_variants()`,
+`tools/q3_q4_research.py`). **Treat this as a lead, not a finding** — same 45-day window used for all 36
+threshold/horizon/variant combinations tested across both passes (real multiple-comparisons exposure), no
+out-of-sample split yet, still gross of slippage. A gap-extension/momentum variant was cleanly refuted
+(uniformly negative, worst -$1.02 net) and a reverse-hedge (executable `reverse_basis`) variant was
+inconclusive. **Next step, not yet done: re-test the rolling-`r̂` result on a genuinely held-out window**
+before trusting it. An external candidate proposal, `docs/Gold-Basis-EA-Strategy-and-System-Design.md`
+(tracked, not accepted, `/arb-hostile-review` NOT READY), motivated the rolling-rate test but its own fuller
+specification (regime filtering, proper exit policy) remains unexplored.
 
 ## The decisive finding (2026-09-16) — do not re-derive this
 
