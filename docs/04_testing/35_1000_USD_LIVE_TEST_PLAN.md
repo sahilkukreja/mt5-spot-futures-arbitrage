@@ -415,15 +415,49 @@ The table's "supervised; fills, timestamps, both reference prices, clock offset 
 - Total realized cost is consistent with the ≈USD 5 estimate, not wildly over — if it isn't, that's itself a
   finding worth understanding before committing to 200 more pairs at Stage 3.
 
+### 8.1.4 results — 10/10 completed, 2026-09-17/2026-09-18
+
+**All 10 pairs ran, verified against the Experts log and the journal CSV (`arb_harness_stage2_journal.csv`).**
+Result against each criterion, stated precisely rather than rounded to a single PASS:
+
+- ✅ **10/10 reached `COMPLETED`** — no `HALTED`, no `ORPHANED_UNRESOLVED`. Pairs 1–2 (2026-09-17), pairs 3–10
+  (2026-09-18).
+- ✅ **0 kill-switch trips, 0 `RECONCILIATION_REQUIRED`** across all 10, confirmed from every Experts log and
+  every `StartupReconciling()` pass on reattach.
+- ✅ **0 `DEAL_TIME`-only rows** — every journal row's `t_fill` is genuine ms-precision, `DEAL_TIME_MSC`
+  confirmed in use throughout by construction and by the data itself (no round-second timestamps).
+- ⚠️ **`clock_offset_ms`: no stated bound ever existed to check against — a real `NO MAGIC VALUES` gap,
+  surfaced by this run, not resolved by it.** Observed intra-pair swings ranged from 11ms (pair 6) to **663ms
+  (pair 5)**. The large swings are very likely an artifact of `XAUUSD.vx` spot-tick staleness — the same
+  underlying condition the R-004 fast-market guard exists to catch, which blocked 3 times in this same
+  session on skew — contaminating the offset reading itself, not genuine local/server clock drift. This
+  criterion cannot be marked PASS/FAIL against a bound that was never derived; it is recorded as **observed,
+  unbounded, and its main outlier explained by a known related cause**, per `RISK_REGISTER.md` R-015.
+- ⚠️ **Independent quote cross-check (§8.1.3 step 2): only done for pair 3**, via the terminal's own Trade
+  log (exact match on all 4 deals). Pairs 1, 2, 4–10 do not have a separately-recorded independent quote to
+  compare fills against — the procedure as written asks for this on every pair, and it was not repeated after
+  pair 3.
+- ✅ **Total realized cost: $4.93 tracked (pairs 2–10) + pair 1's unrecorded cost (ran before the R-011 P&L
+  fix existed).** True 10-pair total is very likely in the **$5.4–5.5** range assuming pair 1 cost similarly
+  to the others — consistent with the ≈$5 estimate, not wildly over.
+
+**Net: 4 of 6 checkable items fully clean, 2 genuinely open (not failed, not silently passed).** Nothing
+observed indicates anything unsafe happened during any of the 10 pairs — every fill was sane, every close
+succeeded on the first attempt, no anomalous retcode occurred. The two open items are gaps in what the
+*exit criteria themselves* can currently verify, surfaced by actually running the full 10 rather than assumed
+away. See `RISK_REGISTER.md` R-015 for the clock-offset finding and its connection to R-004.
+
 **On success:** the 10-pair CSV and the operator's cross-check notes are retained as the record (not
 committed — account/ticket-identifying detail stays local, consistent with existing safeguards), and Stage 3
 requires its own go decision, not an automatic continuation. **That go decision is expressed in code as the
 operator writing `stage2_confirmed.flag`** (§6, T20) — a deliberate manual action, never something the
 harness does for itself. Until that file exists, the Stage 3/4 scheduler will not start regardless of any
-input setting.
+input setting. **Given the two open items above, writing that flag now would mean accepting them as known,
+explained gaps rather than closed ones — a legitimate call, but the account owner's to make explicitly, not
+something to do by default because the pair count reached 10.**
 
 **On failure:** return to design/Stage 0–1. Stage 3's 200-pair automated run does not begin from a Stage 2
-that needed a workaround to pass.
+that needed a workaround to pass. (Not applicable here — nothing failed; see the results above.)
 
 ## 8.2 Stage 3/4 — operational procedure (design draft, 2026-09-17 — `/arb-risk-review` REJECT, `/arb-hostile-review` NOT READY)
 

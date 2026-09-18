@@ -21,7 +21,7 @@ needs a full, reviewed design first.
 | File | Stage | Status |
 |---|---|---|
 | `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | **Verified.** 12/12 PASS, confirmed by real execution, 2026-09-16. |
-| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pairs 1, 2, and 3 all completed successfully** (2026-09-17, 2026-09-17, 2026-09-18). Pair 2 verified the R-011 realized-P&L fix; pair 3 was the first real exercise of `GuardFastMarket()` (R-004) — it blocked once on a genuine spot-feed staleness moment, then passed cleanly on retry. `InpMaxPairs` now 3 — see "Fourth real run" below before raising it further. Places real orders. |
+| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **10/10 pairs complete** (2026-09-17 x2, 2026-09-18 x8), all `COMPLETED`, total cost ≈$4.93 tracked (≈$5.4–5.5 true 10-pair total, consistent with the ≈$5 estimate). §8.1.4 exit criteria: 4/6 fully clean, 2 open (`clock_offset_ms` bound never derived — R-015; independent quote cross-check only done for pair 3). `stage2_confirmed.flag` **not yet written** — pending the account owner's decision on the two open items. See "Stage 2 complete" below. Places real orders. |
 | `HarnessStage2_Guards.mqh` | Stage 2 — pure decision logic | **Verified. 17/17 PASS** (G1–G17) via `HarnessStage2_SelfTest.mq5`, confirmed by real execution on the VPS terminal, 2026-09-18 — includes 5 new functions for the R-004 guard (`TickVelocityPtsPerSec`, `QuoteAgeMs`, `CrossLegSkewMs`, `GuardFastMarketLogic`). No broker/account API call anywhere in it (checkable by grep). |
 | `HarnessStage2_SelfTest.mq5` | Stage 2 — guard self-test | **Verified. 17/17 PASS**, confirmed by real execution on the VPS terminal, 2026-09-18 — G17 (the load-bearing replay of the real 2026-09-11 anomaly) passed, confirming the guard blocks the actual historical event via velocity while skew alone would not have. Tests every function in the `.mqh` above; does not touch a broker. |
 
@@ -271,6 +271,51 @@ whether `InpMaxCrossLegSkewMs=400`/`InpMaxVelocityPtsPerSec=20.0` are well-calib
 live behavior. If future pairs see repeated blocks with a similar signature, that's worth investigating
 properly (not fixed by loosening the threshold reflexively) — a one-off so far is consistent with normal
 market variance.
+
+### Stage 2 complete — pairs 4–10, 2026-09-18, and the final exit-criteria check
+
+R-014 (account isolation) produced a real consequence before pair 4 could even fire: `MMT_TradePannel_Pro`'s
+2 open pairs pushed real margin usage high enough that `GuardMarginLevel()` correctly blocked with
+`BLOCKED: projected margin level below InpMinMarginLevelPct`. The account owner closed those pairs; pair 4
+then fired. Along the way, `InpMaxCumulativeLossUsd` was tightened to `25` and `InpMaxTradeLossUsd` to `1.5`
+(deliberately, after the tradeoff was discussed — a smaller worst-case cushion in exchange for a smaller
+self-imposed cap) and `InpMaxDailyLossUsd` was raised mid-session from `4` to `6` to let pairs 9–10 complete
+same-day rather than waiting for the next calendar day's counter reset.
+
+**Pairs 4–10, all `COMPLETED`, all verified against the journal and Experts log:**
+
+| Pair | Realized P&L | Cumulative after | Notes |
+|---|---:|---:|---|
+| 4 | −$0.75 | $1.77 | |
+| 5 | −$0.60 | $2.37 | leg2 slippage +0.10, high end of normal range |
+| 6 | −$0.49 | $2.86 | |
+| 7 | −$0.49 | $3.35 | preceded by a fast-market guard block (skew=541ms), clean on retry |
+| 8 | −$0.47 | $3.82 | leg1 slippage +0.21, largest single-leg slippage observed in this run |
+| 9 | −$0.56 | $4.38 | |
+| 10 | −$0.55 | $4.93 | final pair |
+
+Total tracked cost across pairs 2–10: **$4.93**. Pair 1 ran before the R-011 P&L-tracking fix existed, so its
+cost was never recorded — true 10-pair total is very likely **≈$5.4–5.5**, consistent with the design doc's
+≈$5 estimate.
+
+**`GuardFastMarket()` across the full 10-pair run: 3 blocks (pairs 4-attempt, 7, plus the one before pair 3),
+7 clean passes, zero exposure created by any block.** Skew values at block time: 1650ms, 468ms, 541ms — all
+above `InpMaxCrossLegSkewMs=400`. Worth having as real calibration data for a future threshold review, not
+acted on now.
+
+**§8.1.4 exit-criteria check against the completed 10-pair journal — 4 of 6 items fully clean, 2 open:**
+10/10 reached `COMPLETED`; 0 kill-switch trips; 0 `RECONCILIATION_REQUIRED`; 0 `DEAL_TIME`-only rows (all
+ms-precision); total cost consistent with the estimate. **Open:** `clock_offset_ms` has no stated bound to
+check against (a `NO MAGIC VALUES` gap, not previously caught) and its largest outlier (pair 5, 663ms
+intra-pair swing) is very likely contaminated by the same spot-tick staleness R-004's guard targets, not
+genuine clock drift — see `RISK_REGISTER.md` R-015. The independent quote cross-check (§8.1.3 step 2) was
+only performed for pair 3, not repeated for every pair as written. Full account:
+`docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §8.1.4 "results."
+
+**`stage2_confirmed.flag` has not been written.** All 10 pairs completed safely — nothing observed indicates
+any unsafe behavior occurred — but the two open items above mean the exit criteria aren't cleanly 100%
+satisfied as originally written. Writing that flag is a decision for the account owner to make explicitly,
+informed by these two gaps, not something that should happen automatically because the pair count reached 10.
 
 ### Testability architecture — pure logic split out for self-testing, 2026-09-17
 

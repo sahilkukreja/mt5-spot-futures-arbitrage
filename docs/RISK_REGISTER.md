@@ -620,6 +620,37 @@ live-trading on it
 - **Status:** likely resolved, not independently confirmed. Re-open if any non-Stage-2 position reappears on
   this account.
 
+### R-015: `clock_offset_ms` has no stated bound to check against, and its outliers are likely contaminated
+by the same spot-tick staleness R-004 addresses
+- **Raised:** 2026-09-18, found while checking Stage 2's completed 10-pair journal against §8.1.4's exit
+  criteria.
+- **Cause, part 1 (NO MAGIC VALUES gap):** T14/§8.1.4 both require `clock_offset_ms` to "stay within a stated
+  bound... not drifting," but no numeric bound was ever actually derived anywhere in this project — the same
+  class of gap already found and fixed for the R-004 guard's own thresholds, not yet caught here.
+- **Cause, part 2 (measurement contamination):** `CurrentClockOffsetMs()` computes `server_delta - local_delta`
+  using `XAUUSD.vx`'s own most recent tick each call. If that tick is momentarily stale (the exact condition
+  `GuardFastMarketLogic()` exists to catch), the computed "offset" swings even though nothing about the true
+  local/server clock relationship changed. Across the actual 10-pair journal, intra-pair swings ranged from
+  11ms (pair 6) to **663ms (pair 5)** — pair 5's outlier lands in the same session that saw 3 separate
+  fast-market guard blocks on cross-leg skew (up to 1650ms), consistent with (not proven to be) the same
+  underlying spot-feed staleness.
+- **Consequence:** T14 cannot currently be marked PASS or FAIL in any meaningful sense — there is nothing to
+  compare the observed numbers against. It also means `clock_offset_ms` as currently computed is not a clean,
+  independent diagnostic; treating a large reading as "clock drift" without checking spot-tick freshness at
+  the same moment would misattribute the cause.
+- **Severity:** low — does not indicate anything unsafe occurred in any of the 10 real pairs (every fill was
+  sane, every close succeeded first attempt); it is a measurement-quality gap, not an execution-safety one.
+- **Mitigation:** not yet done. Two independent fixes, either or both worth doing before this criterion is
+  trusted again: (a) derive an actual bound from real data (this 10-pair run is a small first sample; more
+  data would help) rather than leaving it unstated; (b) when computing `clock_offset_ms`, also record the
+  spot tick's own age (`QuoteAgeMs()`, already exists in `HarnessStage2_Guards.mqh`) alongside it, so a large
+  offset reading can be distinguished from a large offset caused by tick staleness at read time.
+- **Trigger/metric:** the next batch of real pairs, with tick-age recorded alongside offset, would either
+  confirm or refute the staleness-contamination hypothesis directly.
+- **Owner:** whoever next reviews Stage 2's telemetry design.
+- **Status:** open, unmitigated. Does not block treating Stage 2's 10 pairs as safely completed; does block
+  treating T14 as cleanly passed.
+
 ---
 
 No further risks recorded yet.
