@@ -1,10 +1,10 @@
 # Signal Research (A4)
 
-Status: **FIRST PASS, 2026-09-18 — no tradeable edge found in the formulation tested; several refinements
-remain unexplored.** This is the document `PROJECT_STATE.md` has named the critical path since the mandate's
-own signal question was first raised. It does not close A4 — it answers the most natural, simplest version of
-the candidate signal this project's own evidence pointed toward, and the answer is negative under that
-formulation. Treat "no edge found yet" as a legitimate, recorded result, not an unfinished task.
+Status: **SECOND PASS, 2026-09-18 — one promising candidate found (rolling carry-rate estimate), NOT yet
+validated out-of-sample; the momentum/extension hypothesis is refuted; the reverse-hedge direction is
+inconclusive.** §9's refinement (rolling `r̂`) produced the first genuinely positive gross-of-slippage result
+this project has found — treat this as a lead requiring out-of-sample validation before it means anything,
+not as a finding. See §10 for the full account and why the multiple-comparisons risk is real here.
 
 ## 1. Objective
 
@@ -156,3 +156,71 @@ single assumption in §5 most likely to change the result, since it directly aff
 "residual" versus "baseline." This requires no new data collection, only a new estimator function against
 the dataset already in hand, and would directly test whether the proposal's own specified design (not this
 document's simplification of it) behaves differently.
+
+## 10. Second pass, 2026-09-18 — three variants tested, one promising lead, one hypothesis refuted
+
+`analyze_signal_variants()` (new, `tools/q3_q4_research.py`) generalizes §4's event study along three axes:
+`r_hat_mode` (fixed vs. a causal rolling median, no lookahead), `basis_column` (statistical `mid_basis` vs.
+the executable `convergence_basis`/`reverse_basis`), and `capture_mode` (`reversion` vs. `extension` —
+betting the residual keeps moving away from baseline rather than back toward it). Three variants run, same
+45-day dataset, same 3 thresholds (p90/p95/p99) × 3 horizons (15/60/240min) = 27 more combinations tested.
+
+### 10.1 Variant A — rolling 24h carry-rate estimate: the first positive gross-of-slippage result
+
+Same reversion test as §4, but `r̂` is now a **causal 24-hour trailing median** of the implied annual rate
+(`_rolling_implied_rate()`) instead of the fixed 4.71%, matching the external proposal's own "lagged robust
+estimate" specification for the first time.
+
+| Threshold | 15min net | 60min net | 240min net | 240min: fraction clearing cost |
+|---|---:|---:|---:|---:|
+| p90 ($1.17) | −$0.28 | −$0.16 | **+$0.13** | 63.0% |
+| p95 ($1.47) | −$0.26 | −$0.09 | **+$0.35** | 72.0% |
+| p99 ($2.06) | −$0.21 | +$0.15 | **+$0.65** | **86.2%** |
+
+**This is categorically different from the fixed-`r̂` result in §4 — the rolling estimate matters, and it
+matters a lot, specifically at longer horizons and higher thresholds.** The p99/240min cell is the strongest
+single result this project has produced: mean net capture $0.65 (gross of slippage), clearing round-trip
+cost in 86% of 145 qualifying entries.
+
+**Why this is a lead, not a finding, stated as firmly as §4's negative result was:**
+- **Same window, no out-of-sample split.** Every test in this document — §4's 9 combinations, this section's
+  27 more — has been run against the identical 45-day period. A pattern that holds within one window is not
+  yet shown to hold outside it, and `12_FAIR_VALUE_MODEL.md` already notes the underlying spot price moved
+  ~8% over this exact window — a trending regime, not necessarily a representative one.
+- **Real multiple-comparisons exposure.** 36 threshold/horizon/variant combinations have now been tested
+  against one window. Some fraction of them looking favorable by chance is expected even if no true edge
+  exists anywhere. The p99/240min cell being the single best-looking result out of 36 is exactly the pattern
+  a spurious finding would produce.
+- **Still gross of slippage.** Unchanged from §4 — this project's only real execution data (Stage 2, n=10
+  pairs) is nowhere near a slippage distribution, and a 240-minute hold is long enough that adverse price
+  movement during entry/exit could plausibly exceed the differences between the net-capture numbers above.
+- **n=145 at the p99 threshold is not large**, and per §5's caveat, overlapping excursions mean even 145 is
+  an overcount of independent observations, not an undercount.
+
+### 10.2 Variant B — reverse hedge (executable `reverse_basis`, BUY futures/SELL spot): inconclusive
+
+Same rolling-vs-fixed question is not yet tested here — this variant used the fixed `r̂` and swapped
+`mid_basis` for the properly executable `reverse_basis` (`Ask(futures) − Bid(spot)`, the correct price for
+the BUY-futures/SELL-spot direction, rather than the mid-price approximation used elsewhere). Result: mixed,
+mostly negative. Best cell (p90/240min): +$0.15 net, 54% clearing — not compelling on its own, and no
+consistent pattern across thresholds the way Variant A showed. Untested combination worth doing before
+concluding anything: rolling `r̂` on the reverse-hedge executable basis, since Variant A suggests the rolling
+estimate is what unlocks a signal, and this variant hasn't tried it yet.
+
+### 10.3 Variant C — gap-extension (momentum): refuted, cleanly
+
+Instead of betting the residual reverts, this tests betting an already-large residual **keeps growing**.
+Result: uniformly, strongly negative across every threshold and horizon — worst cell -$1.02 net, best cell
+still -$0.03 net, clearing round-trip cost in 0–22% of cases depending on cell. **This is a clean refutation
+of the momentum hypothesis**, and indirectly supportive of reversion being the right direction to trade *if*
+a real signal exists at all — betting against the extreme has never looked this bad in any variant tested.
+
+### 10.4 What this changes for §8 (decisions proposed)
+
+Still none — but the honest next step is now sharper than §9 originally stated. **Before treating Variant A
+as anything more than a lead:** re-run it on a genuinely held-out window (e.g., collect a fresh few days of
+ticks the discovery process never touched, or split the existing 45 days into a discovery half and a
+confirmation half decided *before* looking at the confirmation half's results) and check whether the
+p99/240min pattern survives. If it doesn't survive a real out-of-sample check, this was multiple-comparisons
+noise, and that itself would be a useful, recordable result — not a failure of the research process, exactly
+what the process exists to catch.

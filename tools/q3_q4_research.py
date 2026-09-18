@@ -534,6 +534,134 @@ def analyze_threshold_reversion(
     return result
 
 
+def _rolling_implied_rate(frame: pd.DataFrame, window_hours: float) -> pd.Series:
+    """Causal (backward-looking only) rolling median of the implied annual rate, replacing the fixed r_hat
+    used elsewhere. At each row, uses only rows at or before that row's own timestamp -- no lookahead. This
+    is the refinement 15_SIGNAL_RESEARCH.md names as its smallest next test: the proposal this project
+    reviewed specifies a "lagged robust estimate," not a fixed constant, and that has never been tested.
+    """
+    rate = frame["mid_basis"].to_numpy() / (frame["spot_ask"].to_numpy() * frame["T_years"].to_numpy())
+    rate = np.clip(rate, 0, 1)
+    timestamps = pd.to_datetime(frame["fut_time_msc"], unit="ms", utc=True)
+    rate_series = pd.Series(rate, index=pd.DatetimeIndex(timestamps.to_numpy())).sort_index()
+    rate_series = rate_series[~rate_series.index.duplicated(keep="last")]
+    return rate_series.rolling(f"{window_hours}h").median()
+
+
+def analyze_signal_variants(
+    basis: pd.DataFrame,
+    expiry_date: str,
+    percentiles: tuple[float, ...],
+    horizons_minutes: tuple[int, ...],
+    r_hat_mode: str = "fixed",
+    r_hat_fixed: float | None = None,
+    rolling_window_hours: float = 24.0,
+    basis_column: str = "mid_basis",
+    capture_mode: str = "reversion",
+    round_trip_cost: float = 0.4975,
+) -> dict[str, Any]:
+    """Generalizes analyze_threshold_reversion() along the three axes 15_SIGNAL_RESEARCH.md's own
+    "unresolved questions" and the account owner named as follow-up tests, 2026-09-18:
+
+    - r_hat_mode: "fixed" (the already-tested simplification) or "rolling" (a causal trailing-median
+      estimate, _rolling_implied_rate() above -- the proposal's own "lagged robust estimate" spec).
+    - basis_column: "mid_basis" (statistical, not executable -- what was tested so far), "convergence_basis"
+      (executable for SELL futures/BUY spot -- Bid(fut)-Ask(spot)), or "reverse_basis" (executable for BUY
+      futures/SELL spot -- Ask(fut)-Bid(spot), the "reverse hedge" direction). Using the executable basis
+      directly, rather than mid_basis plus a flat round-trip-cost subtraction, is a more realistic test of
+      what a specific direction could actually capture.
+    - capture_mode: "reversion" (bets the residual shrinks back toward baseline -- what was tested so far) or
+      "extension" (bets an already-moving residual keeps moving further away -- a momentum/trend-following
+      hypothesis, motivated by this project's own finding that the raw basis series has "a fast, partially
+      mean-reverting intraday component layered on a slower-moving level that does not fully revert,"
+      analyze_basis_decay()'s own interpretation).
+    """
+    required = {"fut_time_msc", "mid_basis", "spot_ask", basis_column}
+    if not required.issubset(basis.columns):
+        return {"status": "insufficient_data", "reason": f"missing columns: {sorted(required - set(basis.columns))}"}
+    if r_hat_mode == "fixed" and r_hat_fixed is None:
+        return {"status": "insufficient_data", "reason": "r_hat_mode='fixed' requires r_hat_fixed"}
+
+    cols = list(dict.fromkeys(["fut_time_msc", "mid_basis", "spot_ask", basis_column]))
+    frame = basis[cols].copy()
+    frame["fut_time_utc"] = pd.to_datetime(frame["fut_time_msc"], unit="ms", utc=True)
+    expiry = pd.Timestamp(expiry_date, tz="UTC")
+    frame["T_years"] = (expiry - frame["fut_time_utc"]).dt.total_seconds() / (365 * 24 * 3600)
+    frame = frame[frame["T_years"] > 0].dropna(subset=["mid_basis", "spot_ask", basis_column])
+    if frame.empty:
+        return {"status": "insufficient_data", "reason": "all rows are at/after the supplied expiry date"}
+
+    if r_hat_mode == "rolling":
+        r_hat_series = _rolling_implied_rate(frame, rolling_window_hours).dropna()
+        frame = frame.sort_values("fut_time_utc")
+        r_hat_lookup = pd.DataFrame({"fut_time_utc": r_hat_series.index, "r_hat": r_hat_series.to_numpy()})
+        frame = pd.merge_asof(frame, r_hat_lookup, on="fut_time_utc", direction="backward")
+        frame = frame.dropna(subset=["r_hat"])
+        if frame.empty:
+            return {"status": "insufficient_data", "reason": "rolling_window_hours too large for available history"}
+        frame["x_t"] = frame[basis_column] - frame["spot_ask"] * frame["r_hat"] * frame["T_years"]
+        model_desc = f"rolling {rolling_window_hours}h causal median implied rate (no lookahead)"
+    else:
+        frame["x_t"] = frame[basis_column] - frame["spot_ask"] * r_hat_fixed * frame["T_years"]
+        model_desc = f"fixed r_hat={r_hat_fixed}"
+
+    timestamps = pd.to_datetime(frame["fut_time_msc"], unit="ms", utc=True)
+    series = pd.Series(frame["x_t"].to_numpy(), index=timestamps).sort_index().dropna()
+    one_min = series.resample("1min").last().dropna()
+    abs_x = one_min.abs()
+
+    result: dict[str, Any] = {
+        "status": "measured",
+        "model": f"x_t = {basis_column} - spot_ask*r_hat*T_years ({model_desc}); capture_mode={capture_mode}; "
+        "1-min resampled series",
+        "round_trip_cost_usd": round_trip_cost,
+        "by_percentile": {},
+    }
+
+    for pct in percentiles:
+        threshold = float(abs_x.quantile(pct / 100.0))
+        above = abs_x >= threshold
+        entries = above & ~above.shift(1, fill_value=False)
+        entry_times = abs_x.index[entries.to_numpy()]
+
+        horizon_results: dict[str, Any] = {}
+        for h in horizons_minutes:
+            captures = []
+            for t in entry_times:
+                t_exit = t + pd.Timedelta(minutes=h)
+                idx = one_min.index.searchsorted(t_exit)
+                if idx >= len(one_min):
+                    continue
+                x_entry = one_min.loc[t]
+                x_exit = one_min.iloc[idx]
+                # reversion: bets |x| shrinks (captures if it did). extension: bets |x| grows further
+                # (captures if it did) -- the sign of the capture formula flips between the two hypotheses.
+                if capture_mode == "extension":
+                    captures.append(abs(x_exit) - abs(x_entry))
+                else:
+                    captures.append(abs(x_entry) - abs(x_exit))
+            if not captures:
+                horizon_results[f"{h}min"] = {"status": "insufficient_data", "reason": "no entry had a valid exit bar"}
+                continue
+            cap_series = pd.Series(captures)
+            horizon_results[f"{h}min"] = {
+                "n_entries": int(cap_series.size),
+                "mean_gross_capture_usd": round(float(cap_series.mean()), 4),
+                "median_gross_capture_usd": round(float(cap_series.median()), 4),
+                "mean_net_of_round_trip_usd": round(float(cap_series.mean()) - round_trip_cost, 4),
+                "fraction_positive_gross_capture": round(float((cap_series > 0).mean()), 4),
+                "fraction_clearing_round_trip": round(float((cap_series > round_trip_cost).mean()), 4),
+            }
+
+        result["by_percentile"][f"p{pct:g}"] = {
+            "threshold_usd": round(threshold, 4),
+            "n_qualifying_entries": int(entry_times.size),
+            "horizons": horizon_results,
+        }
+
+    return result
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Offline Q-003 and Q-004 evidence analyzer.")
     parser.add_argument("--basis-csv", type=Path, required=True, help="basis_synchronized.csv from a tick run")
