@@ -559,6 +559,7 @@ def analyze_signal_variants(
     basis_column: str = "mid_basis",
     capture_mode: str = "reversion",
     round_trip_cost: float = 0.4975,
+    exclude_wednesday_swap: bool = False,
 ) -> dict[str, Any]:
     """Generalizes analyze_threshold_reversion() along the three axes 15_SIGNAL_RESEARCH.md's own
     "unresolved questions" and the account owner named as follow-up tests, 2026-09-18:
@@ -575,6 +576,14 @@ def analyze_signal_variants(
       hypothesis, motivated by this project's own finding that the raw basis series has "a fast, partially
       mean-reverting intraday component layered on a slower-moving level that does not fully revert,"
       analyze_basis_decay()'s own interpretation).
+    - exclude_wednesday_swap: for longer ("weekly") horizons that might otherwise span the tripled Wednesday
+      swap charge, force-closes the trade before that Wednesday's rollover instead of holding the full
+      nominal horizon -- the trade still counts, with a truncated realized hold, matching what a real swap-
+      avoiding strategy would actually do (close early, not skip the setup). Entries that start ON a
+      Wednesday are excluded outright, since only the DAY of the rollover is sourced
+      (14_TRANSACTION_COST_MODEL.md's swap_rollover3days finding), not the exact hour, so whether such an
+      entry precedes or follows that day's rollover moment can't be determined. Both
+      n_truncated_wednesday_swap and n_excluded_wednesday_swap are reported per horizon.
     """
     required = {"fut_time_msc", "mid_basis", "spot_ask", basis_column}
     if not required.issubset(basis.columns):
@@ -627,8 +636,27 @@ def analyze_signal_variants(
         horizon_results: dict[str, Any] = {}
         for h in horizons_minutes:
             captures = []
+            n_excluded_wednesday = 0
+            n_truncated_wednesday = 0
             for t in entry_times:
                 t_exit = t + pd.Timedelta(minutes=h)
+                if exclude_wednesday_swap:
+                    entry_day = t.floor("D")
+                    if entry_day.weekday() == 2:
+                        # Entry itself is already on a Wednesday -- cannot cleanly avoid the
+                        # rollover without a sourced rollover hour (only the DAY is confirmed,
+                        # 14_TRANSACTION_COST_MODEL.md's swap_rollover3days finding). Exclude
+                        # rather than guess whether entry precedes or follows the rollover moment.
+                        n_excluded_wednesday += 1
+                        continue
+                    days_until_wed = (2 - entry_day.weekday()) % 7 or 7
+                    next_wednesday = entry_day + pd.Timedelta(days=days_until_wed)
+                    if t_exit >= next_wednesday:
+                        # Force-close before Wednesday's rollover, same as a real swap-avoiding
+                        # strategy would -- the trade still counts, just with a shorter realized
+                        # hold than the nominal horizon, not thrown away.
+                        t_exit = next_wednesday - pd.Timedelta(minutes=1)
+                        n_truncated_wednesday += 1
                 idx = one_min.index.searchsorted(t_exit)
                 if idx >= len(one_min):
                     continue
@@ -641,11 +669,15 @@ def analyze_signal_variants(
                 else:
                     captures.append(abs(x_entry) - abs(x_exit))
             if not captures:
-                horizon_results[f"{h}min"] = {"status": "insufficient_data", "reason": "no entry had a valid exit bar"}
+                horizon_results[f"{h}min"] = {"status": "insufficient_data", "reason": "no entry had a valid exit bar",
+                                               "n_excluded_wednesday_swap": n_excluded_wednesday,
+                                               "n_truncated_wednesday_swap": n_truncated_wednesday}
                 continue
             cap_series = pd.Series(captures)
             horizon_results[f"{h}min"] = {
                 "n_entries": int(cap_series.size),
+                "n_excluded_wednesday_swap": n_excluded_wednesday,
+                "n_truncated_wednesday_swap": n_truncated_wednesday,
                 "mean_gross_capture_usd": round(float(cap_series.mean()), 4),
                 "median_gross_capture_usd": round(float(cap_series.median()), 4),
                 "mean_net_of_round_trip_usd": round(float(cap_series.mean()) - round_trip_cost, 4),

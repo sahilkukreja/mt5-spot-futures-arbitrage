@@ -1,10 +1,11 @@
 # Signal Research (A4)
 
-Status: **SECOND PASS, 2026-09-18 — one promising candidate found (rolling carry-rate estimate), NOT yet
-validated out-of-sample; the momentum/extension hypothesis is refuted; the reverse-hedge direction is
-inconclusive.** §9's refinement (rolling `r̂`) produced the first genuinely positive gross-of-slippage result
-this project has found — treat this as a lead requiring out-of-sample validation before it means anything,
-not as a finding. See §10 for the full account and why the multiple-comparisons risk is real here.
+Status: **THIRD PASS, 2026-09-18 — the intraday rolling-`r̂` lead holds up on a same-window confirmation
+check; a "weekly" extension of the same idea produces striking headline numbers that collapse to ~7–10
+independent events on inspection and should not be trusted.** §10's intraday result (rolling `r̂`, ≤240min
+exit) is unchanged in character on a held-out slice. §11's weekly-horizon test looked dramatically stronger
+at first — then a same-day independence check showed why that's not credible. See §11 before repeating any
+of its headline figures anywhere.
 
 ## 1. Objective
 
@@ -224,3 +225,76 @@ confirmation half decided *before* looking at the confirmation half's results) a
 p99/240min pattern survives. If it doesn't survive a real out-of-sample check, this was multiple-comparisons
 noise, and that itself would be a useful, recordable result — not a failure of the research process, exactly
 what the process exists to catch.
+
+## 11. Third pass, 2026-09-18 — a same-window confirmation check, a weekly extension, and why the weekly
+numbers should not be trusted
+
+Genuine fresh out-of-sample data is not available yet — MT5 cannot supply ticks from a date that hasn't
+happened, so real confirmation requires waiting for calendar time to pass (see the account owner's exchange
+recorded in the session this document was produced in). As an interim, weaker-but-immediate check: re-ran
+§10's exact rolling-`r̂` parameters (no re-tuning) against a **held-out slice of the existing window** —
+2026-09-01 through 2026-09-16, the last portion of the 45-day dataset. This is not true out-of-sample (that
+slice already contributed to the original full-window statistics), but it is at least a check that nothing
+falls apart on a narrower cut.
+
+### 11.1 Intraday result, held-out slice — holds up in character
+
+| Threshold | 240min net (full window, §10) | 240min net (held-out slice) |
+|---|---:|---:|
+| p90 | +$0.13 | +$0.14 |
+| p95 | +$0.35 | +$0.34 |
+| p99 | +$0.65 | +$0.13 |
+
+p90 and p95 are essentially unchanged. p99 is weaker on the smaller slice (35 entries here vs. 145 on the
+full window) but still positive. **This is expected and not very informative** — as stated above, this isn't
+real out-of-sample evidence, just a narrower cut of the same data. It rules out "the result falls apart
+immediately on any subset," nothing stronger.
+
+### 11.2 Weekly extension, closing before the Wednesday swap — striking numbers, not to be trusted
+
+Requested test: extend the horizon to multi-day ("weekly") scale, but avoid the tripled Wednesday swap charge
+by force-closing before that day's rollover rather than holding through it (`exclude_wednesday_swap=True`,
+`analyze_signal_variants()`) — the trade is truncated to close just before the next Wednesday, not discarded,
+matching what a real swap-avoiding strategy would do. Horizons tested: 1, 2, and 5 days (1440/2880/7200
+minutes), same rolling-`r̂` model, full 45-day window.
+
+**Headline result, before the caveat below:** p99 threshold, 1-day nominal horizon: mean net capture
+**+$1.30**, clearing round-trip cost in **89%** of 75 entries, **100%** positive gross capture. p90 and p95
+show the same pattern at smaller magnitude.
+
+**Why these numbers should not be trusted or repeated anywhere as evidence of edge:** a same-day independence
+check (clustering entries more than 24 hours apart into one event) shows the underlying sample is far smaller
+than it looks:
+
+| Threshold | Reported `n_entries` | Independent clusters (>24h gap) |
+|---|---:|---:|
+| p90 | 771 | **9** |
+| p95 | 460 | **10** |
+| p99 | 145 | **7** |
+
+**The "75 independent entries, 100% positive" at p99 is actually ~7 real events, each counted roughly 10
+times over** because multi-day horizons vastly exceed the typical spacing between threshold-crossing entries
+— many nearby entries are measuring nearly the same underlying price path, not independent draws. This is
+the same caveat §5 already named ("overlapping entries are not independent samples"), but for weekly horizons
+it is not a minor caveat — it is disqualifying. A 100%-positive result from ~7 real events over a 45-day
+window in which the underlying spot price is independently known to have moved ~8% (`12_FAIR_VALUE_MODEL.md`)
+is at least as consistent with "this window happened to contain a few large one-directional moves" as with
+"a repeatable reversion pattern exists at weekly scale." Seven events cannot distinguish between those
+explanations.
+
+**Disposition: do not cite the weekly-horizon numbers as evidence of anything, in this document or
+elsewhere, until they can be computed from a genuinely larger number of independent events** — either a much
+longer collection window, or accepting that weekly-scale reversion is simply not testable with 45 days of
+data the way the intraday version is. The intraday result (§10, §11.1) does not have this specific problem
+at the same severity — its entry counts (86–497 at the relevant thresholds) are still overlapping to some
+degree but nowhere near as collapsed as the weekly test's, since 15–240 minute horizons are much closer to
+the typical spacing between crossings.
+
+### 11.3 What actually changed
+
+Nothing here moves the project past "one lead, not validated" (§10's status stands). The weekly extension
+was worth trying and worth recording — including the negative methodological finding that it doesn't have
+enough independent data to say anything, which is itself useful: it means any future attempt at a
+multi-day-horizon signal needs either much more history or a fundamentally different test design (e.g.,
+testing the underlying *rate* of excursion events rather than per-event capture), not just a longer horizon
+bolted onto the existing entry-detection method.
