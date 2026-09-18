@@ -258,6 +258,12 @@ both legs flattened on the first attempt (`retcode=10009 DONE`, R-013's new retr
 no transient retcode occurred). **Realized P&L: −$0.41**, correctly accumulated (`daily loss $1.02/40.0,
 cumulative loss $1.02/250.0` — matches `$0.61 + $0.41` exactly).
 
+**Independently cross-checked against the terminal's own Trade log (§8.1.3), 2026-09-18 — exact match on all
+four deals.** Ticket numbers, prices, symbols, directions, and volumes for both entries (deal #10819094 sell
+`GC-Z26` @4409.72; deal #10819096 buy `XAUUSD.vx` @4371.15) and both closes (deal #10819098 buy `GC-Z26`
+@4409.87; deal #10819100 sell `XAUUSD.vx` @4370.99) agree exactly between the EA's own Experts log and the
+terminal's independent Trade log — not just trusting the EA's own bookkeeping, per §8.1.3's own standard.
+
 **What this run establishes:** `GuardFastMarket()` now has one real example of blocking (plausibly correctly,
 on genuine spot-feed staleness) and one of passing cleanly under normal conditions in the same session —
 meaningfully more real-world evidence than the self-test alone could provide, though not yet enough to say
