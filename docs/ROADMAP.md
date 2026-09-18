@@ -337,7 +337,9 @@ signal logic — `02_quant/15_SIGNAL_RESEARCH.md` is still missing, and remains 
 economics/strategy gate specifically. A candidate proposal exists (`docs/Gold-Basis-EA-Strategy-and-System-
 Design.md`) but was reviewed `NOT READY` and is not accepted.
 
-**Stage 3/4 (the automated 300-pair scheduler) is separately blocked**, unaffected by Stage 2's completion:
-`/arb-risk-review` REJECT and `/arb-hostile-review` NOT READY (`35_1000_USD_LIVE_TEST_PLAN.md` §8.2), with
-design-level proposals for most of its 7 mitigations but no re-review yet. Writing `stage2_confirmed.flag`
-satisfies only the code-level stage-gate mechanism (T20); it does not authorize Stage 3/4.
+**Stage 3/4 (the automated 300-pair scheduler) will not be pursued — decided 2026-09-18 (D-009).** With Stage
+2's real cost baseline in hand (≈$0.55/pair), the account owner chose not to spend the guaranteed ≈$150–250
+that 300 more zero-signal-logic, certain-to-lose pairs would cost, especially since §3.1 already established
+that even 300 pairs can't close the mandate's actual conditional-tail question at any affordable n. The
+measurement-harness track ends at Stage 2. `35_1000_USD_LIVE_TEST_PLAN.md` §8.2 is retired, kept for the
+record only.

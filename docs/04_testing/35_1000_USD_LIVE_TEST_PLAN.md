@@ -461,7 +461,15 @@ that needed a workaround to pass. (Not applicable here — nothing failed; see t
 
 ## 8.2 Stage 3/4 — operational procedure (design draft, 2026-09-17 — `/arb-risk-review` REJECT, `/arb-hostile-review` NOT READY)
 
-**Status: reviewed, rejected in current form, revision proposed 2026-09-18, not re-reviewed.** Concrete
+**RETIRED, 2026-09-18 (D-009). The account owner decided not to pursue Stage 3/4 at all**, given Stage 2's
+real realized cost (≈$0.55/pair) confirmed the ≈$150–250 guaranteed cost of running 300 more pairs that are
+certain to close at a loss by design, for information that — per §3.1 below — can't even close the mandate's
+actual conditional-tail question at this or any affordable sample size. This section is kept for the record,
+not as an active plan. Do not resume work on it without a new decision superseding D-009. See
+`DECISION_LOG.md` D-009 for the full reasoning.
+
+**Everything below this point describes a design that will not be built.** Original review status, kept for
+the record: **reviewed, rejected in current form, revision proposed 2026-09-18, not re-reviewed.** Concrete
 resolutions to mitigations 2, 3, 5, and 7 are proposed below ("Proposed resolutions to mitigations 2–7"); a
 formula for mitigation 4 is proposed but unverified; mitigation 1 (the fast-market guard) has a working,
 replay-tested implementation, not yet run for real; mitigation 6 (broker ToS) is explicitly blocked on the

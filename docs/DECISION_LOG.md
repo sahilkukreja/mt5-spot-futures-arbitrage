@@ -253,3 +253,37 @@ No further decisions recorded yet.
   the actual precondition. **Status remains `proposed`** -- neither change accepts D-008 itself, which is
   still the account owner's decision to make. See `PHASE_GRADUATION_CRITERIA.md`, `RISK_REGISTER.md` R-010,
   and `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` sections 2, 7, 8, 8.1.
+
+### D-009: Stage 3/4 (the automated 300-pair measurement run) will not be pursued
+- **Status:** **decided, 2026-09-18.** Account owner's explicit call, made with the real cost already in
+  front of them (Stage 2 had just completed, giving a real per-pair cost baseline, not an estimate).
+- **Date:** 2026-09-18
+- **Decision:** Do not build, review, or run Stage 3/4's automated stratum A/B scheduler. Stage 2 (10/10
+  pairs, `stage2_confirmed.flag` written) is the last live measurement this project will run under D-008's
+  zero-signal-logic, cost-only framing.
+- **Reason, in the account owner's own terms:** running 300 more pairs that are certain to close at a loss by
+  design (no signal logic decides when to exit) is not good development practice when the marginal
+  information gained doesn't justify further guaranteed real-capital cost. This is reinforced by the design
+  doc's own §3.1 finding: the conditional tail (the mandate's actual "P95 slippage" question) can't be
+  populated at any affordable sample size regardless — it needs n≈26,500, costing 13.2x the entire capital
+  ceiling — so Stage 3/4's 300 pairs were never going to fully close that question either, only narrow the
+  median/IQR a bit further, at a guaranteed cost of ≈$150–250.
+- **Evidence:** Stage 2's actual realized cost (10 pairs, ≈$5.4–5.5, averaging ≈$0.55/pair) confirmed the
+  design doc's cost estimate is accurate, removing the main remaining uncertainty Stage 3/4 might have
+  resolved. `35_1000_USD_LIVE_TEST_PLAN.md` §3.1 (Required Safety Margin cannot be derived at any affordable
+  n); §1 (guaranteed lower bound ≈$149.25, worst-case ≈$299–449).
+- **Alternatives considered:** (a) run a reduced n (e.g. 100 instead of 300) — cheaper, still guaranteed-loss
+  by design, still doesn't touch the conditional-tail problem; not selected, same objection applies at any
+  scale. (b) proceed with the full 300 after finishing the 7 review mitigations — rejected on cost/value
+  grounds, independent of whether the mitigations could be resolved.
+- **Consequence:** `35_1000_USD_LIVE_TEST_PLAN.md` §8.2 (Stage 3/4 design draft, `/arb-risk-review` REJECT /
+  `/arb-hostile-review` NOT READY) is retired, not pursued further. The measurement-harness track (Stage
+  A/B/C in `ROADMAP.md`'s original framing) ends at Stage 2. `17_EXPECTED_VALUE.md`'s Required Safety Margin
+  remains unclosable via execution measurement at this capital base — this was already known (§3.1), D-009
+  just confirms the project will not spend further capital attempting to narrow it.
+- **Invalidation condition:** the account owner changes their mind, or a future signal candidate (A4) turns
+  out to specifically need the conditional-tail data Stage 3/4 would have partially informed — unlikely given
+  §3.1's own finding that even 300 pairs can't close that gap.
+- **What this does not affect:** actual signal research (`02_quant/15_SIGNAL_RESEARCH.md`, still unwritten)
+  uses the existing 5.8M-row canonical dataset already collected — it costs nothing further and is unaffected
+  by this decision. See `ROADMAP.md` §7 for the current state of that track.
