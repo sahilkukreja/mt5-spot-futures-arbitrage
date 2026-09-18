@@ -216,9 +216,17 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   2–7 and a full re-review remain outstanding. It does strengthen Stage 2 pairs 3–10 directly, and its pure
   logic is now genuinely trustworthy, not just compiled. See `measurement_harness/README.md` "Fast-market/
   stale-quote guard" for the full account.
+- **Update 2026-09-18 (pair 3) — `GuardFastMarket()` exercised against a real broker for the first time.**
+  Blocked once (`velocity_spot=-1.00` fail-closed sentinel, `skew=1650ms` vs. `max_skew=400`) on what appears
+  to be a genuine, momentary spot-feed staleness gap — no exposure created, the block happened pre-send. A
+  retry shortly after passed cleanly and pair 3 completed normally. One block and one clean pass in the same
+  session is real evidence the guard functions end-to-end without permanently jamming, but is not yet enough
+  data to say whether the UNCALIBRATED thresholds are well-tuned for this broker's live behavior. See
+  `measurement_harness/README.md` "Fourth real run" for the full account.
 - **Owner:** Data and execution research
-- **Status:** open — pure logic verified (17/17 PASS, real execution 2026-09-18); real-API wrapper
-  (`GuardFastMarket()`) still unverified against a real broker connection.
+- **Status:** open — pure logic verified (17/17 PASS) and real-API wrapper exercised (one block, one pass),
+  both by real execution 2026-09-18. Threshold calibration against live conditions remains an open question,
+  not yet resolvable from a single data point.
 
 ### R-005: Incorrect futures contract or expiry transition
 - **Cause:** stale symbol configuration, inaccurate broker metadata, silent symbol substitution, or trading inside the roll/expiry risk window
@@ -599,13 +607,18 @@ live-trading on it
   improve, and retry pair 3 then; or (b) open a genuinely separate, independently-funded account for Stage
   2/3/4 — the original §7 intent — leaving the legacy position and account entirely untouched. (b) is the
   cleaner fix and does not require realizing anything on the legacy position.
+- **Resolved (path (a) taken), 2026-09-18, same day.** The account owner closed both legacy positions shortly
+  after (`[PGUI] CLOSE Pair #1`/`#2`, 23:03:13–14), without this project pushing for it beyond laying out the
+  tradeoff. Pair 3 fired successfully afterward (13:10:18, next session) and `GuardMarginLevel()` no longer
+  blocked. **Not independently re-verified via a fresh whole-account `PositionsTotal()` sweep** (the trigger
+  metric below) — only inferred from the margin guard passing and the legacy EA's own log lines. Treat
+  isolation as *likely* restored, not *confirmed* restored, until that sweep happens.
 - **Trigger/metric:** confirm via a fresh `PositionsTotal()`/`PositionSelectByTicket()` sweep (not just this
   EA's own magic-number-filtered view) whether any non-Stage-2 position remains open on this account, before
-  trusting §7's isolation claim again -- or, if path (b) is taken, confirm the new account is actually clean
-  the same way.
+  fully trusting §7's isolation claim again.
 - **Owner:** the account owner.
-- **Status:** open, confirmed. Mitigation path chosen: neither (a) nor (b) yet acted on; Stage 2 pair 3 is
-  blocked in the meantime by the margin guard, correctly.
+- **Status:** likely resolved, not independently confirmed. Re-open if any non-Stage-2 position reappears on
+  this account.
 
 ---
 

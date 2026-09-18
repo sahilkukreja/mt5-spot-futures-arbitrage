@@ -21,7 +21,7 @@ needs a full, reviewed design first.
 | File | Stage | Status |
 |---|---|---|
 | `HarnessStage0_DryRun.mq5` | Stage 0 — dry run | **Verified.** 12/12 PASS, confirmed by real execution, 2026-09-16. |
-| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pairs 1 and 2 both completed successfully, 2026-09-17.** Pair 2 also verified the R-011 realized-P&L fix against a real broker (-$0.61, correctly accumulated). `InpMaxPairs` now 2 — see "Third real run" below before raising it further. **2026-09-18: `GuardFastMarket()` (R-004) added and compiled clean** — see "Fast-market guard" below. Not yet exercised on a real pair. Places real orders. |
+| `HarnessStage2_LivePilot.mq5` | Stage 2 — live pilot | **Pairs 1, 2, and 3 all completed successfully** (2026-09-17, 2026-09-17, 2026-09-18). Pair 2 verified the R-011 realized-P&L fix; pair 3 was the first real exercise of `GuardFastMarket()` (R-004) — it blocked once on a genuine spot-feed staleness moment, then passed cleanly on retry. `InpMaxPairs` now 3 — see "Fourth real run" below before raising it further. Places real orders. |
 | `HarnessStage2_Guards.mqh` | Stage 2 — pure decision logic | **Verified. 17/17 PASS** (G1–G17) via `HarnessStage2_SelfTest.mq5`, confirmed by real execution on the VPS terminal, 2026-09-18 — includes 5 new functions for the R-004 guard (`TickVelocityPtsPerSec`, `QuoteAgeMs`, `CrossLegSkewMs`, `GuardFastMarketLogic`). No broker/account API call anywhere in it (checkable by grep). |
 | `HarnessStage2_SelfTest.mq5` | Stage 2 — guard self-test | **Verified. 17/17 PASS**, confirmed by real execution on the VPS terminal, 2026-09-18 — G17 (the load-bearing replay of the real 2026-09-11 anomaly) passed, confirming the guard blocks the actual historical event via velocity while skew alone would not have. Tests every function in the `.mqh` above; does not touch a broker. |
 
@@ -234,7 +234,37 @@ written to `arb_harness_stage2_pairs.csv` with `outcome=COMPLETED`, entry/exit p
 
 This closes R-011's real-API gap: both halves of the fix — the pure loss-only arithmetic (self-test, 12/12
 PASS) and the real `HistoryDealSelect`/`GetDealPnL`/`RecordRealizedPnL` wiring (this run) — are now verified.
-`InpMaxPairs=2` is the current ceiling; raise it again only with the same scrutiny as before.
+
+### Fourth real run, 2026-09-18 — pair 3, first real exercise of `GuardFastMarket()` (R-004), and R-014's
+consequence observed directly
+
+**Before pair 3 could fire, R-014 (account isolation) produced a real, direct consequence.** With
+`InpMaxPairs` raised to 3, the first attempt was `BLOCKED: projected margin level below InpMinMarginLevelPct
+(300.0%)` — the legacy `MMT_TradePannel_Pro` EA's 2 open pairs (confirmed by the account owner,
+`RISK_REGISTER.md` R-014) were consuming real margin on the same account, exactly the risk that entry
+predicted. The account owner chose not to close those pairs (they were at a loss) at first, then closed them
+anyway shortly after (`[PGUI] CLOSE Pair #1`/`#2`, 23:03:13–14). The very next fire attempt (23:03:39) hit a
+**different** block: `BLOCKED: fast-market guard (velocity_fut=0.06 velocity_spot=-1.00 max_v=20.0 age_fut=0
+age_spot=0 max_age=2000 skew=1650 max_skew=400)` — `GuardFastMarket()`'s first real invocation against a live
+broker, and it blocked. `velocity_spot=-1.00` is the fail-closed sentinel (too few valid spot ticks in the
+3-second lookback window); `skew=1650` means the spot leg's own last tick was 1.65 seconds older than the
+futures leg's at that instant — consistent with a genuine, momentary spot-feed staleness gap, not an
+artifact of the clock-baseline math (the skew calculation reads each symbol's own tick timestamp directly).
+No exposure was created either time — both blocks happened before any leg was sent.
+
+**Retried a short time later, 2026-09-18 13:10:18 — completed cleanly, no guard block.** `GC-Z26` SELL
+@4409.72 (+0.01 adverse), `XAUUSD.vx` BUY @4371.15 (−0.07 favorable), `HEDGED` (positions 34238259/34238260),
+both legs flattened on the first attempt (`retcode=10009 DONE`, R-013's new retry path still not exercised —
+no transient retcode occurred). **Realized P&L: −$0.41**, correctly accumulated (`daily loss $1.02/40.0,
+cumulative loss $1.02/250.0` — matches `$0.61 + $0.41` exactly).
+
+**What this run establishes:** `GuardFastMarket()` now has one real example of blocking (plausibly correctly,
+on genuine spot-feed staleness) and one of passing cleanly under normal conditions in the same session —
+meaningfully more real-world evidence than the self-test alone could provide, though not yet enough to say
+whether `InpMaxCrossLegSkewMs=400`/`InpMaxVelocityPtsPerSec=20.0` are well-calibrated for this broker's actual
+live behavior. If future pairs see repeated blocks with a similar signature, that's worth investigating
+properly (not fixed by loosening the threshold reflexively) — a one-off so far is consistent with normal
+market variance.
 
 ### Testability architecture — pure logic split out for self-testing, 2026-09-17
 
