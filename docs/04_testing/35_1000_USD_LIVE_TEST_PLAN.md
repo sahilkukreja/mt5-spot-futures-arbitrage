@@ -626,11 +626,16 @@ same cycle Stage 2's design went through, not a one-time exception for this stag
 
 ### 8.2.2 Pre-flight checklist for Stage 3 start (draft — none of these are satisfied yet)
 
-- [ ] Stage 2 exit criteria (§8.1.4) fully met: 10/10 pairs reach a terminal state, 0 kill-switch trips, 0
-      `RECONCILIATION_REQUIRED`, `DEAL_TIME_MSC` used throughout, `clock_offset_ms` stable, fills within a
-      plausible band of independently-noted quotes, total realized cost consistent with the ≈USD 5 estimate.
-      **Currently 2/10.**
-- [ ] Operator has written `stage2_confirmed.flag` (T20) — deliberate manual action.
+- [x] Stage 2 exit criteria (§8.1.4) — **10/10 pairs complete, 2026-09-18. 4 of 6 items fully clean (terminal
+      states, kill-switch, `RECONCILIATION_REQUIRED`, `DEAL_TIME_MSC`); 2 accepted as known, explained gaps
+      rather than fully closed** — `clock_offset_ms` has no stated bound (R-015) and its outlier is likely
+      spot-staleness-contaminated, not clock drift; the independent quote cross-check was done for pair 3
+      only, not all 10. See §8.1.4 "results" above and `RISK_REGISTER.md` R-015 for the full account.
+- [x] **Operator sign-off given, 2026-09-18: `stage2_confirmed.flag` written**, explicitly accepting the two
+      items above as known limitations rather than blocking issues. **This satisfies T20's mechanism only —
+      no Stage 3/4 code exists yet to actually check for this file, and Stage 3/4 itself remains separately
+      blocked** by its own `/arb-risk-review` REJECT / `/arb-hostile-review` NOT READY verdicts and the
+      still-unresolved mitigations 2–7 below. Writing this flag does not authorize Stage 3/4.
 - [x] `/arb-risk-review` run against this section (8.2), 2026-09-17 — **REJECT.** Not yet re-run against a
       revision.
 - [x] `/arb-hostile-review` run against this section (8.2), 2026-09-17 — **NOT READY.** Not yet re-run against

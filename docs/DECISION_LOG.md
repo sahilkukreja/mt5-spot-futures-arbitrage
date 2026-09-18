@@ -214,6 +214,16 @@ No further decisions recorded yet.
 - **Invalidation condition:** Stage 2's 10-pair live pilot shows fills cannot be reliably attributed to
   reference prices; or the Required Safety Margin methodology is revised so this measurement is no longer its
   input; or the account owner withdraws the budget.
+- **Update 2026-09-18 — Stage 2's 10/10 pairs complete, `stage2_confirmed.flag` written.** All 10 pairs
+  reached `COMPLETED`, total realized cost ≈$5.4–5.5 (consistent with the ≈$5 estimate), zero kill-switch
+  trips, zero `RECONCILIATION_REQUIRED`. Fills were reliably attributed to reference prices — the invalidation
+  condition above did not trigger. Two known, explained gaps accepted rather than fully closed by this
+  sign-off: `clock_offset_ms` has no derived bound to check against (new R-015) and its one large outlier is
+  likely spot-tick-staleness contamination, not genuine clock drift; the independent quote cross-check was
+  performed for pair 3 only, not all 10. **This sign-off satisfies T20's mechanism only — it does not
+  authorize Stage 3/4**, which remains separately blocked by its own `/arb-risk-review` REJECT and
+  `/arb-hostile-review` NOT READY verdicts (§8.2) and 7 largely-unresolved mitigations. Full account:
+  `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §8.1.4 "results" and `RISK_REGISTER.md` R-015.
 - **Evidence update (2026-09-16):** the phase-position blocker named in this decision's own risk list is
   resolved by `docs/06_operations/PHASE_GRADUATION_CRITERIA.md` -- see that document and
   `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` section 2. The account precondition (section 7 of that

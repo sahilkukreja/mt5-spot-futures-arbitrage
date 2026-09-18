@@ -20,6 +20,7 @@ __MACOSX/
 measurement_harness/*.csv
 measurement_harness/*.log
 measurement_harness/*.txt
+measurement_harness/*.flag
 
 # The account whitelist config must never live in the git working tree at
 # all (see measurement_harness/README.md "Setup required" -- it belongs

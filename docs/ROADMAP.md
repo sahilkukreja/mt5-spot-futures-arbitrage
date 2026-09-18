@@ -321,3 +321,23 @@ trusted.
 - It does not assume Stage B says proceed.
 - It does not promote any threshold, timeout or multiplier to a design value.
 - It does not shorten the mandate's phased graduation to live capital.
+
+## 7. Update 2026-09-18 — Stage 2 (the live measurement harness) is complete
+
+Since the sections above were written, D-008 was accepted and the measurement harness (`measurement_harness/`,
+quarantined, zero signal logic) was implemented and run. **Stage 2's 10-pair live pilot is now complete**:
+10/10 pairs `COMPLETED`, total cost ≈$5.4–5.5 (consistent with the ≈$5 estimate), zero kill-switch trips.
+`stage2_confirmed.flag` was written by the account owner 2026-09-18, with two known, explained gaps accepted
+rather than fully closed (`clock_offset_ms` bound never derived — R-015; independent quote cross-check done
+for one pair, not all ten). Full account: `docs/04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §8.1.4 "results",
+`RISK_REGISTER.md` R-015, `DECISION_LOG.md` D-008's 2026-09-18 update.
+
+**This does not answer A4.** The harness measured execution cost/slippage against a live broker with zero
+signal logic — `02_quant/15_SIGNAL_RESEARCH.md` is still missing, and remains the critical path for the
+economics/strategy gate specifically. A candidate proposal exists (`docs/Gold-Basis-EA-Strategy-and-System-
+Design.md`) but was reviewed `NOT READY` and is not accepted.
+
+**Stage 3/4 (the automated 300-pair scheduler) is separately blocked**, unaffected by Stage 2's completion:
+`/arb-risk-review` REJECT and `/arb-hostile-review` NOT READY (`35_1000_USD_LIVE_TEST_PLAN.md` §8.2), with
+design-level proposals for most of its 7 mitigations but no re-review yet. Writing `stage2_confirmed.flag`
+satisfies only the code-level stage-gate mechanism (T20); it does not authorize Stage 3/4.
