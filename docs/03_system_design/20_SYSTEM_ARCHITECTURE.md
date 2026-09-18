@@ -9,21 +9,26 @@ This document defines component boundaries, responsibilities, state ownership, a
 enforcement points. It deliberately does **not** assign calibrated numeric parameters (thresholds, timeouts,
 safety margins), because the economics milestone that must produce them is incomplete:
 
+**Updated 2026-09-18 — this table had gone stale (see `.claude/skills/PROJECT_STATE.md` for current gate
+status generally; check there before trusting any cached table, including this one, again):**
+
 | Prerequisite | Status |
 |---|---|
-| `02_quant/12_FAIR_VALUE_MODEL.md` | NOT STARTED |
-| `02_quant/13_BASIS_MODEL.md` | NOT STARTED |
-| `02_quant/14_TRANSACTION_COST_MODEL.md` | NOT STARTED |
-| `02_quant/15_SIGNAL_RESEARCH.md` | Does not exist yet |
-| `02_quant/17_EXPECTED_VALUE.md` | Does not exist yet |
-| `docs/OPEN_QUESTIONS.md` Q-002 (commission/settlement/rollover) | Open |
-| D-001 (broker/instrument pair), D-004 (tick collection method) | `proposed`, not cleared by risk/hostile review |
+| `02_quant/12_FAIR_VALUE_MODEL.md` | Written, real measurements (implied carry rate 4.71%, residual dispersion) |
+| `02_quant/13_BASIS_MODEL.md` | Written, real measurements (basis decay, R-004 anomaly analysis) |
+| `02_quant/14_TRANSACTION_COST_MODEL.md` | Written, real measurements (round-trip $0.4975, swap — see `ASSUMPTIONS.md` A-002 for the one still-open swap-schedule question) |
+| `02_quant/15_SIGNAL_RESEARCH.md` | Written, three passes — status `RESEARCH/UNVALIDATED, calendar-blocked`, not `READY` |
+| `02_quant/17_EXPECTED_VALUE.md` | Written; Required Safety Margin now defined (D-010, 2026-09-18, deterministic two-tier ceiling) — Net Executable Edge still not computable (slippage/latency remain unmeasured) |
+| `docs/OPEN_QUESTIONS.md` Q-002 (commission/settlement/rollover) | Partially resolved; still open on rollover timing/mechanics |
+| D-001 (broker/instrument pair), D-004 (tick collection method) | Both proceeded on in practice (real data collected, real Stage 2 pairs run); no formal risk/hostile-review clearance recorded for either as a standalone item |
 
-Only D-002 (exact delta-neutrality at 0.01/0.01 for this specific pair, `accepted`) and D-003 (pair-level P&L
-unit, `proposed`) have enough grounding to inform structure below. Every parameter that depends on the missing
-documents is marked **UNCALIBRATED** and must not be treated as a real limit. This document does not authorize
+**Still true, unchanged:** no component below has a `READY` design verdict, no signal has been approved, and
+this document still does not authorize any MQL5. D-010 closes one specific gap (the Required Safety Margin
+figure) in the Economics gate — it does not close the Economics gate itself, and does not touch the Design
+gate at all. Every parameter that depends on an unvalidated signal or an uncalibrated measurement is still
+marked **UNCALIBRATED** below and must not be treated as a real limit. This document does not authorize
 proceeding to `21_EXECUTION_ENGINE.md`/`22_STATE_MACHINE.md` with real numbers — it only gives those later
-documents a boundary to fill in once the economics milestone closes.
+documents a boundary to fill in once the remaining gates close.
 
 ## Purpose
 
@@ -52,6 +57,19 @@ to MT5.
 - **Observability:** log feed-gap events; expose quote-age metric per symbol.
 - **Test method:** replay recorded tick files (design pending in `04_testing/31_TICK_REPLAY_DESIGN.md`) and
   confirm timestamps are preserved and no gap is silently dropped.
+- **Session interlock (2026-09-18, formalized on paper only, real data, aggregate only):** grouping both legs'
+  full 45-day tick history by minute-of-day shows both feeds go **completely silent from ~21:58 UTC to ~23:00
+  UTC** every day in the aggregate (`GC-Z26`'s hour-22 bucket has exactly zero ticks across the whole window;
+  the boundary is sharp on both legs, within a minute of each other). **This finding is deliberately scoped:**
+  it is an aggregate across all ~51 days in the dataset, weekends included by construction — it has **not**
+  been decomposed by day of week, so it does not establish whether Friday/weekend transitions behave the same
+  way, differently, or at different clock times. No claim is made here about Friday close or Sunday/Monday
+  open specifically; that remains unmeasured. The correct design consequence is architectural, not a fixed
+  clock-based calendar rule: the Risk Engine's `SIGNAL_PENDING → RISK_CHECKING` guard should key off **observed
+  quote liveness** (extending the existing `QuoteAgeMs()` pattern in `HarnessStage2_Guards.mqh` — if both legs'
+  last-tick age exceeds a threshold, treat it as a session interlock, whatever the wall-clock time is) rather
+  than a hardcoded exchange-hours table, since the exact schedule (including any weekday variation) is not yet
+  fully characterized from real data. The specific quote-age threshold for this purpose remains UNCALIBRATED.
 
 ### 2. Normalization Layer
 - **Responsibility:** convert broker-specific raw ticks into a common internal representation (a `PairLeg`
@@ -102,8 +120,20 @@ to MT5.
   - kill-switch check — binary, not economics-dependent: no `SIGNAL_PENDING → RISK_APPROVED` transition is
     permitted while a kill switch is active (mandate invariant, always enforceable regardless of calibration
     state).
+  - **margin liquidation tripwire (2026-09-18, formalized on paper only)** — the pattern already exists and has
+    run for real: `measurement_harness/HarnessStage2_Guards.mqh`'s `GuardMarginLevelLogic()`, driven by
+    `InpMinMarginLevelPct` (currently 300% for the measurement harness, its own UNCALIBRATED starting value),
+    genuinely blocked a real trade (pair 3, `RISK_REGISTER.md` R-014) when live whole-account margin conditions
+    warranted it — not a simulation, a real, working, once-exercised guard. A production Risk Engine should
+    read live account margin the same way (`AccountInfoDouble(ACCOUNT_MARGIN)`/`ACCOUNT_MARGIN_LEVEL`, not a
+    static pre-computed figure) and extend this same pattern to multi-pair dynamic basis-widening scenarios,
+    rather than inventing a separate mechanism. The specific percentage threshold for a production system
+    remains UNCALIBRATED — the harness's 300% was a reasoned starting value for a single manually-triggered
+    pair, not a validated production limit for concurrent multi-pair exposure.
+  - **session interlock (2026-09-18, formalized on paper only)** — see the new Market Data Layer note below;
+    enforced as a `SIGNAL_PENDING → RISK_CHECKING` guard, not a separate component.
 - **Test method:** unit tests at boundary conditions (exactly at margin limit, kill-switch active, quote at
-  staleness cutoff).
+  staleness cutoff, inside the session-interlock window).
 
 ### 6. Execution Engine
 - **Responsibility:** turn an approved hedge intent into two broker orders; own legging risk, timeouts,
@@ -150,6 +180,7 @@ to MT5.
 | No trading when margin is unsafe | Risk Engine margin check using live `order_calc_margin()` |
 | No orphaned hedge leg without recovery | `ORPHANED` state + emergency flatten path |
 | No new entry after kill-switch activation | Risk Engine kill-switch check blocks `SIGNAL_PENDING → RISK_APPROVED` |
+| No trading during a daily session interlock | Risk Engine quote-liveness check (both legs), keyed off observed silence, not a fixed clock table — see Market Data Layer session-interlock note; threshold UNCALIBRATED |
 
 ## Acceptance tests (for later simulation / fault injection)
 

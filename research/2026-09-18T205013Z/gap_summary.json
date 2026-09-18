@@ -1,0 +1,14 @@
+{
+  "n_bars": 6883,
+  "mean": 39.75090367572278,
+  "median": 39.86999999999989,
+  "std": 0.9803595514956469,
+  "min": 36.789999999999964,
+  "max": 45.8100000000004,
+  "p05": 38.06999999999971,
+  "p25": 39.1200000000008,
+  "p50": 39.86999999999989,
+  "p75": 40.38999999999942,
+  "p95": 41.27000000000044,
+  "note": "Computed from M1 bar CLOSE prices (approximation), not true tick-level executable bid/ask. Sufficient for a first look; re-derive from copy_ticks_range before this feeds a final cost/EV conclusion."
+}

@@ -42,9 +42,9 @@ confirmation of that model so far, and it is also what kills the trade.
 | Component | $/day | Source |
 |---|---|---|
 | Basis decay captured | **+0.3905** | measured above |
-| Spot leg swap paid (long) | **−0.7714** | −60 pts/day = −$0.60/day, ×3 on Wednesdays → ×9/7 average (`14_TRANSACTION_COST_MODEL.md`) |
+| Spot leg swap paid (long) | **−0.6000** | −60 pts/day, confirmed flat `×7/7` by backtest, 2026-09-18 (`ASSUMPTIONS.md` A-002 — Strategy Tester probe measured Mon/Tue/Thu/Fri at −$0.60, Wed at −$1.80 (3×), weekend at $0.00, across two independent weeks). **Supersedes the earlier −$0.7714 (`×9/7`) figure**, which traced to an unreviewed formula, not a measurement. |
 | Futures leg swap | 0.0000 | `swap_mode=SYMBOL_SWAP_MODE_DISABLED` |
-| **Net carry** | **−0.3809** | 95% CI −$0.4384 … −$0.3234 — **entirely negative** |
+| **Net carry** | **−0.2095** | `+0.3905` decay `− 0.6000` swap. Decay's own 95% CI (−0.4480…−0.3330) still applies to that term; the swap term is now a confirmed flat rate, not a distribution — **entirely negative, D-006 unaffected** |
 
 Plus a one-off round trip of **−$0.4975** (measured spread $0.3975 + futures commission $0.10, see
 `14_TRANSACTION_COST_MODEL.md`). Expected P&L of a randomly-timed convergence pair held `H` days:
@@ -84,16 +84,19 @@ by entry/exit timing, not by the drift. The drift only tells us the *average* tr
 
 ### The reverse direction — flagged, explicitly not recommended
 
-The mirror trade (BUY futures / SELL spot) receives spot swap of +40 pts/day (+$0.5143/day averaged for
-Wednesdays) and pays the basis decay of −$0.3905/day, netting **+$0.1238/day**. It is recorded here for
-completeness and because it would be dishonest to report only the direction that fails.
+The mirror trade (BUY futures / SELL spot) receives spot swap of +40 pts/day, confirmed flat **+$0.40/day**
+by the same backtest that resolved A-002 (2026-09-18 — supersedes the earlier +$0.5143/day `×9/7` figure), and
+pays the basis decay of −$0.3905/day, netting **+$0.0095/day** — essentially zero, not the +$0.1238/day
+previously reported. It is recorded here for completeness and because it would be dishonest to report only
+the direction that fails.
 
 It should not be pursued on this evidence:
 
 - It is **swap harvesting with basis risk**, not arbitrage. Its entire return is a broker-set swap credit the
   broker can change without notice, against real price risk it cannot control.
-- +$0.1238/day is small against a residual std of $2.77 and daily ranges near $8 — precisely the
-  "edge small relative to uncertainty" the mandate and `/arb-research` require be rejected.
+- +$0.0095/day is negligible against a residual std of $2.77 and daily ranges near $8 — precisely the "edge
+  small relative to uncertainty" the mandate and `/arb-research` require be rejected, more starkly now that
+  the figure is confirmed near-zero rather than merely small.
 - The +40/−60 point swap asymmetry is the broker's spread. Nothing here establishes the credit side is durable.
 - It inverts the project's stated premise and would need its own hedge-ratio, margin, short-availability and
   rollover analysis from scratch.
@@ -126,7 +129,7 @@ and report the status of each component honestly rather than filling gaps with a
 | Expected exit slippage | **Unmeasured** | Same as above |
 | Latency uncertainty | **Unmeasured** | Same as above; `quote_skew_ms` (mean 130.6ms, p95 384ms) measures cross-leg *quote* skew, not order-to-fill latency, and is not a substitute |
 | Execution-risk buffer | **Unmeasured / undefined** | Mandate requires this be tied to measured execution data, not chosen arbitrarily — cannot be set until slippage/latency trials exist |
-| Required Safety Margin | **Undefined — methodology proposed 2026-09-16** | No value set; a proposed derivation method now exists (see "Required Safety Margin" section below) tying it to the future Phase 1 slippage/latency distribution, but it still requires that trial's data before a number can be computed |
+| Required Safety Margin | **Defined 2026-09-18 (D-010)** | Two-tiered deterministic ceiling: 1.5×/≈$81 (de-risk) and 2.0×/≈$108 (hard stop) over the ≈$54 worst-observed-event anchor — see "Update 2026-09-18" below. Replaces the statistical methodology this row originally pointed to, which is permanently infeasible at this capital base (see "not achievable at this capital base" below) |
 
 ## Provisional sensitivity table — SUPERSEDED 2026-09-16, RETAINED AS A RECORD OF THE ERROR
 
@@ -269,6 +272,27 @@ computed number over the wrong population.
 
 See `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §3.1 and `RISK_REGISTER.md` R-008.
 
+### Update 2026-09-18 — option 1 taken: Required Safety Margin now has a value (D-010, accepted)
+
+The account owner accepted **D-010**: replace the statistical methodology above (permanently infeasible at
+this capital base, per the arithmetic above) with a **deterministic, two-tiered worst-case ceiling**, anchored
+to the single worst real adverse event measured in this repository — the 2026-09-11 13:30:11 UTC fast-market
+event (`RISK_REGISTER.md` R-004), ≈$54 (≈5.4% of the $1,000 ceiling) at 0.01 lot if a leg had been left
+unhedged through it:
+
+| Tier | Multiplier | Value | Trigger |
+|---|---|---|---|
+| 1 | 1.5× | ≈$81/pair | sizing de-risking cap — halt new entries, scale down active risk |
+| 2 | 2.0× | ≈$108/pair | hard circuit-breaker — immediate emergency flatten of any open mismatch |
+
+**This is a real answer to the mandate's gate for the first time**, but a bounded one: it is anchored to n=1 —
+one observed event in 45 days, not a distribution — so it answers "are we covered against the worst thing
+we've actually seen" rather than "what's the true tail probability," which the capital base cannot afford to
+measure (per the arithmetic above, unchanged). See `DECISION_LOG.md` D-010 for the full rationale,
+invalidation condition (a future event exceeding ≈$54 requires re-deriving both tiers), and explicit scope
+limit (this closes one gap in the Economics gate, not the gate itself — Design gate and Signal A4 remain
+separately blocked, unaffected by this decision).
+
 ## Unresolved questions this document depends on
 
 - **Q-002** (open) — price source remains fully open; opposite-direction-position restriction is now answered
@@ -277,6 +301,7 @@ See `04_testing/35_1000_USD_LIVE_TEST_PLAN.md` §3.1 and `RISK_REGISTER.md` R-00
 - **Q-004** (open) — time-to-convergence; this document's sensitivity table sidesteps it by presenting cost
   across a holding-period range rather than picking one, but a real expected-value number still needs a real
   holding-period distribution, not a range.
-- **New: Required Safety Margin is undefined.** No document in this project has yet proposed how conservative
-  it should be for a $1,000 capital base; this blocks evaluating the mandate's gate even once every cost
-  component above is measured.
+- **Resolved 2026-09-18 (D-010): Required Safety Margin is now defined** as a two-tiered deterministic
+  ceiling (1.5×/≈$81 de-risk, 2.0×/≈$108 hard stop) over the ≈$54 worst-observed-event anchor — see "Update
+  2026-09-18" above. Still leaves slippage and latency themselves unmeasured (Q-002-adjacent); this closes the
+  margin-definition gap specifically, not the underlying measurement gap.

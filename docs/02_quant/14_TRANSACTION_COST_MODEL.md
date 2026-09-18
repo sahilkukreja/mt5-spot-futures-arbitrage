@@ -51,7 +51,7 @@ relevant to `12_FAIR_VALUE_MODEL.md`, still NOT STARTED.
 | Futures spread cost (round trip) | ~~$0.30~~ → **$0.2430** mean at 0.01 lot | **Sourced as a full distribution 2026-09-16** — same |
 | Futures commission (round trip, total) | $10 × 0.01 = **$0.10** | Sourced, confirmed fixed 2026-09-15 (see below) |
 | Spot commission | **$0.00** | Sourced 2026-09-15 — **Q-002 partially resolved** |
-| Swap — spot leg (long, held) | −60 pts/day = **−$0.60/day**; ×3 on the Wednesday rollover = **−$1.80** that day | Sourced |
+| Swap — spot leg (long, held) | −60 pts/day = **−$0.60/day**; ×3 on the Wednesday rollover = **−$1.80** that day; **weekly average confirmed flat −$0.60/day (×7/7), 2026-09-18 backtest** — see `ASSUMPTIONS.md` A-002 | Sourced, backtest-confirmed |
 | Swap — futures leg (short, held) | **$0.00/day** — `swap_mode=0`, confirmed disabled | Sourced (new finding this run) |
 | Financing/carry (embedded, not daily swap) | Not separable from the basis itself yet — `12_FAIR_VALUE_MODEL.md` NOT STARTED | Blocked |
 | Rollover mechanism/cost near expiry | Settlement type now known (cash-settled CFD, `trade_calc_mode=SYMBOL_CALC_MODE_CFD`); rollover *timing/mechanics* still undocumented — no machine-readable expiry field exists | **Partially resolved, still blocked on Q-002 for timing/mechanics** |
@@ -128,6 +128,13 @@ picture than one held for weeks.
 > "the dominant unresolved variable" for this structure — it is resolved, and the answer is that no overnight
 > holding period works. Full derivation in `17_EXPECTED_VALUE.md` → "Correction 2026-09-16". Intraday holds,
 > which pay no swap at all, are not covered by this finding and remain open.
+>
+> **Update 2026-09-18 (later same day) — resolved by backtest: the −$0.7714/day swap figure above was wrong.**
+> `docs/ASSUMPTIONS.md` A-002: a Strategy Tester probe (real MT5 swap engine, real broker-configured fields, no
+> live capital) directly measured the weekly schedule — Mon/Tue/Thu/Fri at −$0.60, Wed at −$1.80 (3×), weekend
+> at $0.00, confirmed identically across two separate weeks. That is `×7/7`, flat **−$0.60/day**, not `×9/7`.
+> This paragraph's conclusion (no overnight holding period works) is unchanged — net carry is still negative,
+> now `−$0.2095/day` rather than `−$0.3809/day`. See `17_EXPECTED_VALUE.md` for the corrected net-carry table.
 
 ## Real paired-trade evidence (2026-09-15) — automated reconciliation, n=7
 

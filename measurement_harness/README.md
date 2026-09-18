@@ -303,6 +303,30 @@ cost was never recorded — true 10-pair total is very likely **≈$5.4–5.5**,
 above `InpMaxCrossLegSkewMs=400`. Worth having as real calibration data for a future threshold review, not
 acted on now.
 
+### Pairs 11–12, 2026-09-18/19 — first real exercise of the pre-Leg-2 fast-market re-check
+
+**Pair 11: `REJECTED_BROKER`, zero exposure, not a guard or code issue.** Four pre-Leg-1 guard blocks preceded
+it (ordinary fast-market blocks, same as pairs 4/7's pattern). On the fifth attempt the guard passed but Leg 1
+itself failed: `retcode=10027 (CLIENT_DISABLES_AT)` — AutoTrading was toggled off on the VPS terminal, a
+terminal-level setting, not a broker or guard decision. Correctly not retried (10027 isn't in the transient
+whitelist) and correctly recorded with zero cost. `RetcodeDescription()` didn't have a name for 10027 at the
+time (`UNMAPPED_10027` in the raw log) — fixed same day in `HarnessStage2_Guards.mqh`.
+
+**Pair 12, `COMPLETED`, verified:** Leg 1 SELL `GC-Z26` @4415.22 (ref 4415.23, $0.01 adverse), Leg 2 BUY
+`XAUUSD.vx` @4377.12 (no slippage). Closed at 4415.47/4376.96. Price P&L −$0.25 (leg1) + −$0.16 (leg2) −$0.10
+commission = **−$0.51**, matching the logged figure exactly. Cumulative after: $4.93 + $0 (pair 11) + $0.51 =
+**$5.44**, matches exactly. **First real exercise of the 2026-09-18 pre-Leg-2 guard addition** (see "Pre-Leg-2
+fast-market re-check" above): it ran in the <1ms window between Leg 1's fill and Leg 2's dispatch and passed
+cleanly, as expected for ordinary conditions — confirms the addition doesn't break, stall, or incorrectly
+block the normal path. It has still never been exercised on its actual trip/rollback branch (no real event has
+landed in that window in 12 pairs total now).
+
+Log note: `CloseLegByTicket()`'s success line prints `"EMERGENCY FLATTEN position=... retcode=... close_price=..."`
+on *every* close, normal exits included — not just genuine rollbacks. Pair 12's log shows this exact line for
+an entirely ordinary `HEDGED → UNWINDING → CLOSED` exit; it is not evidence anything unusual happened. The
+label is a naming holdover and a minor readability improvement worth making later (e.g. a separate
+outcome-neutral log line for the normal-exit case), not a safety issue.
+
 **§8.1.4 exit-criteria check against the completed 10-pair journal — 4 of 6 items fully clean, 2 open:**
 10/10 reached `COMPLETED`; 0 kill-switch trips; 0 `RECONCILIATION_REQUIRED`; 0 `DEAL_TIME`-only rows (all
 ms-precision); total cost consistent with the estimate. **Open:** `clock_offset_ms` has no stated bound to
@@ -422,6 +446,30 @@ implemented guard, tested against the specific historical event that motivated i
 remains blocked behind mitigations 2–7 and a full re-review, unchanged by this addition alone. It does
 directly strengthen Stage 2's own posture for pairs 3–10, once the self-test actually runs and the guard is
 exercised on a real pair without incident.
+
+### Pre-Leg-2 fast-market re-check — added 2026-09-18, compiled clean (0 errors), not yet run for real
+
+`tools/simulate_execution.py`'s offline replay of the full 45-day dataset found a real gap: the fast-market
+guard above only ran once, before Leg 1 dispatched. A fast-market event starting *after* that check passes
+but *before* Leg 2 sends would previously go completely unchecked — and the anomaly-window simulation showed
+this isn't academic: legging drift alone exceeded the full round-trip cost in 40% of simulated entries during
+a replay of the actual 2026-09-11 event's ±45-second window (vs. 0.85% unconditionally across the full 45
+days). That's exactly the shape of gap this fix closes.
+
+**Added to `HarnessStage2_LivePilot.mq5`'s `RunOnePair()`:** a second `GuardFastMarket()` call, inserted
+immediately after Leg 1 fills and before Leg 2 dispatches. This reuses the identical, already-tested
+`GuardFastMarketLogic()` — no new threshold, no new logic, same UNCALIBRATED status as before. Unlike the
+pre-Leg-1 guard (a simple decline-to-enter), a trip here means Leg 1 is already open, so it follows the exact
+same rollback shape as the existing "Leg 2 failed" path: flatten Leg 1 via `CloseLegByTicket()`, record
+`OUTCOME_ORPHANED_RECOVERED` (or `OUTCOME_HALTED` if the flatten itself fails, same as every other
+flatten-failure path in this file), and never leave Leg 1 open without an explicit disposition.
+
+**Verification status:** compiled clean, 0 errors, same 1-warning baseline as before this change. **Not yet
+exercised against a real broker connection or the self-test suite** — no real pair has ever tripped this
+specific check (all 10 real Stage 2 pairs completed with only the pre-Leg-1 guard ever firing). Same standard
+as always: a clean compile is not evidence this path works end-to-end. Worth adding a dedicated self-test case
+(mirroring G16/G17's pattern) before the next real pair run, rather than treating the first real trip as the
+first test.
 
 ### Timeout/retry enforcement (R-013) — fixed 2026-09-18, compiled clean, not yet run for real
 

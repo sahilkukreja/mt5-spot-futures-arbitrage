@@ -73,6 +73,7 @@ string RetcodeDescription(int retcode)
       case TRADE_RETCODE_TOO_MANY_REQUESTS:  return "TOO_MANY_REQUESTS";
       case TRADE_RETCODE_LOCKED:             return "LOCKED";
       case TRADE_RETCODE_FROZEN:             return "FROZEN";
+      case TRADE_RETCODE_CLIENT_DISABLES_AT: return "CLIENT_DISABLES_AT"; // AutoTrading/Algo Trading toggle off in the terminal, not a broker rejection -- real occurrence 2026-09-18/19, pair 11
       default: return "UNMAPPED_" + IntegerToString(retcode);
      }
   }

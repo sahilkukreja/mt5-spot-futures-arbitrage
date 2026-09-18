@@ -197,6 +197,15 @@ inflated. **The de-trended re-run proposed above is still worth doing** to chara
 the drift (std $2.77, and the intraday behaviour that matters for a signal), but it will not rescue the
 original interpretation, and Q-004 should no longer be framed as "how long until the basis reverts".
 
+**Update 2026-09-19 (`OPEN_QUESTIONS.md` Q-005) — this decay rate is confirmed robust to a later-discovered
+merge-methodology bias.** The canonical futures-anchored tick merge was found to materially distort a
+different, timing-sensitive statistic (an A4 signal candidate's threshold-crossing test, reversed entirely
+under a corrected union merge — `15_SIGNAL_RESEARCH.md` §14). Re-deriving this decay regression on the same
+union merge gives −$0.3873/day (R²=0.794, n=5,843,313 futures-anchored) vs. −$0.3877/day (R²=0.797,
+n=15,184,998 union) — agreement to within $0.0004/day. This aggregate, slow-moving 51-day trend does not
+share the signal-timing statistic's sensitivity to which ticks the merge kept. Treat this figure, and D-006's
+conclusion built on it, as unaffected by Q-005.
+
 **Why this matters more than the method fix:** at −$0.3905/day of decay captured against −$0.7714/day of
 one-sided spot swap paid, the hold-to-convergence trade is negative-carry at every holding period, with a 95%
 confidence interval that does not touch zero. The full derivation and its consequences are in

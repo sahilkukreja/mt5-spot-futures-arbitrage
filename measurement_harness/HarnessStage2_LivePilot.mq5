@@ -1054,6 +1054,54 @@ void RunOnePair()
 
    // r1 == LEG_FILLED
    g_state = STATE_LEG1_FILLED;
+
+   // 2026-09-18: re-run the fast-market guard here, immediately before Leg 2
+   // dispatches, not only before Leg 1. tools/simulate_execution.py's offline
+   // replay found that a fast-market event starting after the initial guard
+   // passes but before Leg 2 sends would previously slip through entirely --
+   // exactly the shape of the real 2026-09-11 anomaly (three repricings within
+   // ~10 seconds). This reuses the same already-tested GuardFastMarketLogic()
+   // (G17 self-test); it does not add a new threshold. If it trips here, Leg 1
+   // is already open and must be flattened -- this is NOT a "decline to enter"
+   // path like the pre-Leg-1 guard, it is a rollback path, identical to the
+   // existing "Leg 2 failed" handling below.
+   if(!GuardFastMarket())
+     {
+      g_state = STATE_ORPHANED;
+      Print("LEG 2 PRE-DISPATCH FAST-MARKET GUARD TRIPPED -- rolling back leg 1 (position ", leg1_position, ") before Leg 2 ever sent");
+      g_state = STATE_EMERGENCY_FLATTENING;
+      double guard_close_price; ulong guard_close_deal;
+      bool guard_flattened = CloseLegByTicket(leg1_position, guard_close_price, guard_close_deal);
+      if(!guard_flattened)
+        {
+         TripKillSwitch("rollback of leg 1 failed after pre-leg-2 fast-market guard trip -- manual intervention required NOW");
+         g_state = STATE_HALTED;
+         g_pairs_total++;
+         PairSummaryWrite(g_run_id, pair_seq, OUTCOME_HALTED, leg1_price, guard_close_price, 0, 0, 0, false,
+                           g_daily_loss_usd, g_cumulative_loss_usd);
+         SavePersistedState();
+         Print("PAIR ", pair_seq, " outcome: ", OutcomeName(OUTCOME_HALTED));
+         return;
+        }
+      g_state = STATE_CLOSED_ORPHAN;
+      g_consecutive_failures++;
+      g_pairs_total++;
+      g_pairs_today++;
+      double guard_pnl = GetDealPnL(leg1_deal) + GetDealPnL(guard_close_deal);
+      RecordRealizedPnL(guard_pnl);
+      PairSummaryWrite(g_run_id, pair_seq, OUTCOME_ORPHANED_RECOVERED, leg1_price, guard_close_price, 0, 0,
+                        guard_pnl, true, g_daily_loss_usd, g_cumulative_loss_usd);
+      Print("Pair ", pair_seq, " realized P&L: $", DoubleToString(guard_pnl, 2),
+            "  (running: daily loss $", DoubleToString(g_daily_loss_usd, 2), "/", InpMaxDailyLossUsd,
+            ", cumulative loss $", DoubleToString(g_cumulative_loss_usd, 2), "/", InpMaxCumulativeLossUsd, ")");
+      if(g_consecutive_failures >= InpMaxConsecutiveFailures)
+         TripKillSwitch(StringFormat("%d consecutive failures", g_consecutive_failures));
+      Print("PAIR ", pair_seq, " outcome: ", OutcomeName(OUTCOME_ORPHANED_RECOVERED));
+      SavePersistedState();
+      g_state = STATE_IDLE;
+      return;
+     }
+
    g_state = STATE_LEG2_SUBMITTED;
    double leg2_price; ulong leg2_deal; ulong leg2_position;
    ENUM_LEG_RESULT r2 = ExecuteLeg(g_run_id, pair_seq, 2, InpSymbolSpot, ORDER_TYPE_BUY,

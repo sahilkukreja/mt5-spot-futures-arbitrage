@@ -135,13 +135,18 @@ No further decisions recorded yet.
   mirror trade (short spot / long futures), which nets +$0.1238/day on the same measurements — **not
   recommended**, see `17_EXPECTED_VALUE.md` → "The reverse direction". Its entire return is a broker-set swap
   credit that can change without notice, and +$0.1238/day is small against a $2.77 residual std and ~$8 daily
-  ranges, which is exactly the "edge small relative to uncertainty" the mandate requires be rejected.
+  ranges, which is exactly the "edge small relative to uncertainty" the mandate requires be rejected — and per
+  the 2026-09-18 backtest resolution above, this figure is confirmed to actually be a near-zero **+$0.0095/day**
+  (not +$0.1238/day), which only strengthens the "not recommended" call.
 - **Reason:** the trade's revenue term was never measured. The basis decays at **−$0.3905/day**
   (95% CI −$0.4480 … −$0.3330, R²=0.83, n=5,843,313 synchronized rows over 45 days), matching the carry
   model's independent prediction of −$0.4832/day. One-sided spot swap costs **−$0.7714/day**
   (−60 pts/day, ×3 Wednesdays). Net carry **−$0.3809/day, 95% CI entirely below zero**, before the $0.4975
   round trip. The prior analysis compared cost against the basis *level* instead of its *change* and so
-  reported a positive residual where the true expected value is negative.
+  reported a positive residual where the true expected value is negative. **Update, 2026-09-18 — resolved,
+  not just disputed:** the `−$0.7714/day` swap figure was wrong; a Strategy Tester backtest (`ASSUMPTIONS.md`
+  A-002) confirmed the real weekly schedule is `×7/7`, flat `−$0.60/day`. Net carry is now **−$0.2095/day**,
+  not −$0.3809/day — this decision's conclusion is unaffected (still negative), only the magnitude moves.
 - **Evidence:** [`docs/02_quant/17_EXPECTED_VALUE.md`](02_quant/17_EXPECTED_VALUE.md) → "Correction
   2026-09-16"; [`docs/02_quant/13_BASIS_MODEL.md`](02_quant/13_BASIS_MODEL.md) → "Resolved 2026-09-16";
   `research/export-full/basis_summary.json` via `tools/tick_export_loader.py`.
@@ -284,6 +289,47 @@ No further decisions recorded yet.
 - **Invalidation condition:** the account owner changes their mind, or a future signal candidate (A4) turns
   out to specifically need the conditional-tail data Stage 3/4 would have partially informed — unlikely given
   §3.1's own finding that even 300 pairs can't close that gap.
-- **What this does not affect:** actual signal research (`02_quant/15_SIGNAL_RESEARCH.md`, still unwritten)
-  uses the existing 5.8M-row canonical dataset already collected — it costs nothing further and is unaffected
-  by this decision. See `ROADMAP.md` §7 for the current state of that track.
+
+### D-010: Replace R-008's statistical Required Safety Margin with a deterministic worst-case ceiling
+- **Status:** **accepted, 2026-09-18.** Account owner's explicit decision, made after the proposed multiplier
+  was deliberately left unset by the original proposal pending exactly this kind of sign-off.
+- **Date:** 2026-09-18
+- **Decision:** Instead of trying to estimate the *conditional* p95 slippage distribution statistically
+  (R-008 already showed this needs n≈26,500, costing 13.2x the capital ceiling — infeasible at any affordable
+  sample size), define the Required Safety Margin as a **deterministic, two-tiered ceiling** over the ≈$54
+  baseline anchor (see Evidence below):
+  - **Tier 1 — 1.5× (≈$81/pair):** sizing de-risking cap. Halts new entries and scales down active risk once
+    projected worst-case exposure crosses this level.
+  - **Tier 2 — 2.0× (≈$108/pair):** hard circuit-breaker stop. Triggers immediate emergency flatten of any
+    open mismatch.
+- **Rationale (account owner's own terms):** a tiered structure avoids premature stoppage during routine
+  volatility spikes (Tier 1 de-risks rather than kills) while still providing a mathematically bounded,
+  deterministic loss ceiling (Tier 2) — resolving R-008 without requiring the unaffordable statistical tail
+  sample R-008 already ruled out.
+- **Reason:** R-008 is a genuine dead end for the statistical approach specifically, not for the underlying
+  goal (bounding worst-case loss). A deterministic ceiling answers a different, cheaper, and arguably more
+  honest question for a capital-preservation-first mandate: not "what's the p95 of adverse slippage" but "what
+  is the worst thing we have actually observed happen, and are we covered against it."
+- **Evidence:** the 2026-09-11 13:30:11 UTC fast-market event (`RISK_REGISTER.md` R-004) — a real, measured
+  ~54-point futures repricing in ~10 seconds against a frozen spot quote, worth **≈$54 (≈5.4% of the $1,000
+  ceiling) at 0.01 lot** if a leg had been left unhedged through it. This is the worst single event across the
+  full 45-day, 5.8M-row synchronized dataset.
+- **Alternatives considered:** (a) keep pursuing the statistical p95 — rejected, R-008 already shows this is
+  infeasible at any affordable n; (b) use the unconditional (not fast-market-conditional) slippage distribution
+  — rejected, R-008 already flagged this specific substitution as the "looks rigorous, biased low" failure
+  mode to avoid; (c) do nothing and leave the Required Safety Margin permanently undefined — the status quo,
+  and this proposal's actual alternative if not accepted.
+- **What this still does not resolve, and must not be treated as settled:** this is n=1 — one observed event,
+  not a distribution — so the ≈$54 anchor itself remains a single data point, not a validated worst case. A
+  future real fast-market event exceeding it would invalidate the ceiling (see below), and neither tier has
+  been exercised against a real broker connection yet.
+- **Consequence:** `17_EXPECTED_VALUE.md` can now state a Required Safety Margin for the first time,
+  unblocking that part of the Economics gate. It does **not** validate any signal (A4 remains separately
+  `RESEARCH/UNVALIDATED, calendar-blocked`) or authorize any execution code (Design gate remains separately
+  not passed — this decision closes one gap in one gate, not the gate itself, and not any other gate).
+- **Invalidation condition:** a future real fast-market event exceeds the ≈$54 figure this decision is
+  anchored to, which would require re-deriving both tiers before treating them as still valid.
+- **What this does not affect:** actual signal research (`02_quant/15_SIGNAL_RESEARCH.md`, written, three
+  passes deep, still `RESEARCH/UNVALIDATED`) uses the existing 5.8M-row canonical dataset already collected —
+  it costs nothing further and is unaffected by this decision. See `ROADMAP.md` §7 for the current state of
+  that track.

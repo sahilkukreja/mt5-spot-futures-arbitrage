@@ -1,0 +1,53 @@
+{
+  "convergence_basis": {
+    "n": 433380,
+    "mean": 39.4011,
+    "median": 39.38,
+    "std": 1.1241,
+    "min": 35.09,
+    "max": 49.26,
+    "p05": 37.82,
+    "p25": 38.43,
+    "p75": 40.24,
+    "p95": 41.49
+  },
+  "reverse_basis": {
+    "n": 433380,
+    "mean": 39.7279,
+    "median": 39.7,
+    "std": 1.1472,
+    "min": 35.39,
+    "max": 49.96,
+    "p05": 38.12,
+    "p25": 38.73,
+    "p75": 40.6,
+    "p95": 41.82
+  },
+  "mid_basis": {
+    "n": 433380,
+    "mean": 39.5645,
+    "median": 39.54,
+    "std": 1.135,
+    "min": 35.24,
+    "max": 49.61,
+    "p05": 37.97,
+    "p25": 38.58,
+    "p75": 40.415,
+    "p95": 41.655
+  },
+  "quote_skew_ms": {
+    "n": 433380,
+    "mean": 119.4776,
+    "median": 94.0,
+    "std": 97.273,
+    "min": 0.0,
+    "max": 500.0,
+    "p05": 6.0,
+    "p25": 40.0,
+    "p75": 185.0,
+    "p95": 294.0
+  },
+  "convergence_basis_negative_rows": 0,
+  "merge_tolerance_ms": 500,
+  "note": "Post-hoc tick merge via pd.merge_asof (backward, tolerance=500 ms). convergence_basis = Bid(GC-Z26) - Ask(XAUUSD.vx): executable for SELL futures / BUY spot. reverse_basis = Ask(GC-Z26) - Bid(XAUUSD.vx): executable for BUY futures / SELL spot. mid_basis is for distributional research only \u2014 not an executable price. These figures are a Phase 0 approximation; true live synchronization is a separate Phase 1 requirement before any execution conclusion is drawn."
+}

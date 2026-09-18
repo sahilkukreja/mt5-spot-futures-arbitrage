@@ -19,9 +19,29 @@ This state machine does not establish a trading edge or authorize live trading. 
 - retry count and retry spacing;
 - slippage and adverse-divergence limits;
 - margin-stress multiplier;
-- maximum holding period and time-based exit policy.
+- maximum holding period and time-based exit policy;
+- `Leg2_Timeout_Ms` — **UNCALIBRATED / not yet derived** (2026-09-18). See "Leg ordering and timeout" below.
+  No number is proposed here; the same standard already applied to R-004's velocity/quote-age/skew thresholds
+  and R-013's timeouts requires deriving this from real retry/failure data, which does not exist yet (zero
+  transient retcodes across Stage 2's 10 real pairs).
 
 Q-002, Q-003, and Q-004 remain open. No transition may use a placeholder as an approved runtime value.
+
+### Leg ordering and timeout (2026-09-18, formalized on paper only)
+
+**Proposed default: `GC-Z26` (futures) submitted as Leg 1, `XAUUSD.vx` (spot) as Leg 2.** This is a proposed
+starting choice, not an empirically justified one — `Gold-Basis-EA-Strategy-and-System-Design.md` §8 already
+cautions that "futures is always slower" is not a fact and leg order should come from an explicit execution
+policy. No latency comparison between the two legs has been measured in this repository. Treat this ordering
+as a default to test against, not a settled design decision — it may need to flip once real fill-latency data
+exists per leg.
+
+**On Leg 2 failure, timeout, or requote:** the existing `LEG1_FILLED --(leg2 rejected/timeout)--> ORPHANED →
+EMERGENCY_FLATTENING → CLOSED_ORPHAN` path (already specified below) applies unchanged — an immediate market
+order to flatten Leg 1. This was already the design; this update only fixes which leg is Leg 1 and formalizes
+that the timeout bounding this path (`Leg2_Timeout_Ms`) has no value yet, rather than silently reusing a
+number from elsewhere (the earlier-rejected `250ms` proposals in this project's history were never sourced
+from anything real).
 
 ## Design requirements
 

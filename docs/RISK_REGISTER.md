@@ -57,6 +57,12 @@ Tracks identified risks to capital, execution, or the project itself. Reviewed b
   Two things this does **not** say: (1) intraday pairs pay no swap and are not covered -- measured daily range
   of `convergence_basis` is median $7.91 against a $0.4975 round trip, which is opportunity, not demonstrated
   edge; (2) it does not reduce the unmeasured-slippage exposure that is the other half of this risk.
+  **Update 2026-09-18, resolved:** the `-$0.7714/day` swap figure was wrong. A Strategy Tester backtest probe
+  (`ASSUMPTIONS.md` A-002 -- real MT5 swap engine, real broker-configured fields, zero live capital) measured
+  the actual weekly schedule directly: Mon/Tue/Thu/Fri at -$0.60, Wed at -$1.80 (confirmed 3x across two
+  independent weeks), weekend at $0.00. That is `x7/7`, flat **-$0.60/day**, not `x9/7`. Net carry is now
+  **-$0.2095/day** (was -$0.3809/day) -- this entry's verdict is unchanged, still negative, still rejects the
+  overnight structure; only the magnitude moves. See A-002 and `17_EXPECTED_VALUE.md` for the corrected table.
   **Practical note on the live account:** the 4 concurrent pairs observed open on 2026-09-16 are in the
   convergence direction. To the extent any of them are held overnight, this measurement says they carry at
   approximately -$0.38/day each (~-$1.52/day combined) in net carry, independent of where the basis happens to

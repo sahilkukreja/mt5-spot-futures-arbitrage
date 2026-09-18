@@ -1,0 +1,115 @@
+{
+  "status": "measured",
+  "model": "x_t = mid_basis - spot_ask*r_hat*T_years (rolling 24.0h causal median implied rate (no lookahead)); capture_mode=reversion; 5s resampled series",
+  "round_trip_cost_usd": 0.4975,
+  "by_percentile": {
+    "p0.9": {
+      "threshold_usd": 0.0064,
+      "n_qualifying_entries": 282,
+      "horizons": {
+        "15min": {
+          "n_entries": 282,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.0967,
+          "median_gross_capture_usd": -0.06,
+          "mean_net_of_round_trip_usd": -0.5942,
+          "fraction_positive_gross_capture": 0.2305,
+          "fraction_clearing_round_trip": 0.0035
+        },
+        "60min": {
+          "n_entries": 273,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.1905,
+          "median_gross_capture_usd": -0.1903,
+          "mean_net_of_round_trip_usd": -0.688,
+          "fraction_positive_gross_capture": 0.1209,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "240min": {
+          "n_entries": 272,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.6474,
+          "median_gross_capture_usd": -0.4178,
+          "mean_net_of_round_trip_usd": -1.1449,
+          "fraction_positive_gross_capture": 0.0404,
+          "fraction_clearing_round_trip": 0.0
+        }
+      }
+    },
+    "p0.95": {
+      "threshold_usd": 0.0067,
+      "n_qualifying_entries": 291,
+      "horizons": {
+        "15min": {
+          "n_entries": 291,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.0992,
+          "median_gross_capture_usd": -0.0628,
+          "mean_net_of_round_trip_usd": -0.5967,
+          "fraction_positive_gross_capture": 0.2268,
+          "fraction_clearing_round_trip": 0.0034
+        },
+        "60min": {
+          "n_entries": 282,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.1905,
+          "median_gross_capture_usd": -0.1884,
+          "mean_net_of_round_trip_usd": -0.688,
+          "fraction_positive_gross_capture": 0.117,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "240min": {
+          "n_entries": 281,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.6471,
+          "median_gross_capture_usd": -0.4181,
+          "mean_net_of_round_trip_usd": -1.1446,
+          "fraction_positive_gross_capture": 0.0391,
+          "fraction_clearing_round_trip": 0.0
+        }
+      }
+    },
+    "p0.99": {
+      "threshold_usd": 0.007,
+      "n_qualifying_entries": 301,
+      "horizons": {
+        "15min": {
+          "n_entries": 301,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.0979,
+          "median_gross_capture_usd": -0.0604,
+          "mean_net_of_round_trip_usd": -0.5954,
+          "fraction_positive_gross_capture": 0.2359,
+          "fraction_clearing_round_trip": 0.0033
+        },
+        "60min": {
+          "n_entries": 292,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.1895,
+          "median_gross_capture_usd": -0.1884,
+          "mean_net_of_round_trip_usd": -0.687,
+          "fraction_positive_gross_capture": 0.1233,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "240min": {
+          "n_entries": 291,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.6458,
+          "median_gross_capture_usd": -0.4174,
+          "mean_net_of_round_trip_usd": -1.1433,
+          "fraction_positive_gross_capture": 0.0378,
+          "fraction_clearing_round_trip": 0.0
+        }
+      }
+    }
+  }
+}

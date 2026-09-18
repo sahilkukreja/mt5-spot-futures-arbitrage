@@ -560,6 +560,7 @@ def analyze_signal_variants(
     capture_mode: str = "reversion",
     round_trip_cost: float = 0.4975,
     exclude_wednesday_swap: bool = False,
+    resample_freq: str | None = "1min",
 ) -> dict[str, Any]:
     """Generalizes analyze_threshold_reversion() along the three axes 15_SIGNAL_RESEARCH.md's own
     "unresolved questions" and the account owner named as follow-up tests, 2026-09-18:
@@ -584,6 +585,15 @@ def analyze_signal_variants(
       (14_TRANSACTION_COST_MODEL.md's swap_rollover3days finding), not the exact hour, so whether such an
       entry precedes or follows that day's rollover moment can't be determined. Both
       n_truncated_wednesday_swap and n_excluded_wednesday_swap are reported per horizon.
+    - resample_freq: bar size for threshold/entry detection, default "1min" (unchanged from every prior
+      pass -- results already documented in this file stay reproducible). Pass a finer pandas offset
+      string (e.g. "5s") or None to skip resampling entirely and use every synchronized row (one per
+      futures tick, the finest resolution the merged dataset has). 1-minute bars keep only the LAST tick
+      each minute for both the percentile threshold and entry detection -- with a large sample this barely
+      matters, but on a thin out-of-sample window (2026-09-19, ~2.3 days) it discards most of the real
+      information the data actually has. Finer/no resampling increases entry counts, which can also
+      increase near-duplicate overlapping entries (consecutive ticks milliseconds apart both crossing the
+      same threshold) -- read n_entries and independence together, not n_entries alone.
     """
     required = {"fut_time_msc", "mid_basis", "spot_ask", basis_column}
     if not required.issubset(basis.columns):
@@ -616,13 +626,19 @@ def analyze_signal_variants(
 
     timestamps = pd.to_datetime(frame["fut_time_msc"], unit="ms", utc=True)
     series = pd.Series(frame["x_t"].to_numpy(), index=timestamps).sort_index().dropna()
-    one_min = series.resample("1min").last().dropna()
+    series = series[~series.index.duplicated(keep="last")]
+    if resample_freq is None:
+        one_min = series
+        freq_desc = "no resampling -- every synchronized row (one per futures tick)"
+    else:
+        one_min = series.resample(resample_freq).last().dropna()
+        freq_desc = f"{resample_freq} resampled series"
     abs_x = one_min.abs()
 
     result: dict[str, Any] = {
         "status": "measured",
         "model": f"x_t = {basis_column} - spot_ask*r_hat*T_years ({model_desc}); capture_mode={capture_mode}; "
-        "1-min resampled series",
+        f"{freq_desc}",
         "round_trip_cost_usd": round_trip_cost,
         "by_percentile": {},
     }

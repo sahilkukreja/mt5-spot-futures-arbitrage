@@ -1,0 +1,115 @@
+{
+  "status": "measured",
+  "model": "x_t = mid_basis - spot_ask*r_hat*T_years (rolling 24.0h causal median implied rate (no lookahead)); capture_mode=reversion; 1min resampled series",
+  "round_trip_cost_usd": 0.4975,
+  "by_percentile": {
+    "p0.9": {
+      "threshold_usd": 0.0072,
+      "n_qualifying_entries": 28,
+      "horizons": {
+        "15min": {
+          "n_entries": 28,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.0948,
+          "median_gross_capture_usd": -0.0308,
+          "mean_net_of_round_trip_usd": -0.5923,
+          "fraction_positive_gross_capture": 0.3571,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "60min": {
+          "n_entries": 26,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.3104,
+          "median_gross_capture_usd": -0.1998,
+          "mean_net_of_round_trip_usd": -0.8079,
+          "fraction_positive_gross_capture": 0.1538,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "240min": {
+          "n_entries": 26,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.8351,
+          "median_gross_capture_usd": -0.5032,
+          "mean_net_of_round_trip_usd": -1.3326,
+          "fraction_positive_gross_capture": 0.0385,
+          "fraction_clearing_round_trip": 0.0
+        }
+      }
+    },
+    "p0.95": {
+      "threshold_usd": 0.0077,
+      "n_qualifying_entries": 28,
+      "horizons": {
+        "15min": {
+          "n_entries": 28,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.0941,
+          "median_gross_capture_usd": -0.0213,
+          "mean_net_of_round_trip_usd": -0.5916,
+          "fraction_positive_gross_capture": 0.3571,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "60min": {
+          "n_entries": 26,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.3071,
+          "median_gross_capture_usd": -0.1998,
+          "mean_net_of_round_trip_usd": -0.8046,
+          "fraction_positive_gross_capture": 0.1538,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "240min": {
+          "n_entries": 26,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.8398,
+          "median_gross_capture_usd": -0.5032,
+          "mean_net_of_round_trip_usd": -1.3373,
+          "fraction_positive_gross_capture": 0.0385,
+          "fraction_clearing_round_trip": 0.0
+        }
+      }
+    },
+    "p0.99": {
+      "threshold_usd": 0.0077,
+      "n_qualifying_entries": 30,
+      "horizons": {
+        "15min": {
+          "n_entries": 30,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.0918,
+          "median_gross_capture_usd": -0.0213,
+          "mean_net_of_round_trip_usd": -0.5893,
+          "fraction_positive_gross_capture": 0.3667,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "60min": {
+          "n_entries": 28,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.2965,
+          "median_gross_capture_usd": -0.1998,
+          "mean_net_of_round_trip_usd": -0.794,
+          "fraction_positive_gross_capture": 0.1429,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "240min": {
+          "n_entries": 28,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.7874,
+          "median_gross_capture_usd": -0.4589,
+          "mean_net_of_round_trip_usd": -1.2849,
+          "fraction_positive_gross_capture": 0.0357,
+          "fraction_clearing_round_trip": 0.0
+        }
+      }
+    }
+  }
+}

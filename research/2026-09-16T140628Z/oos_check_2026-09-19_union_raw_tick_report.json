@@ -1,0 +1,115 @@
+{
+  "status": "measured",
+  "model": "x_t = mid_basis - spot_ask*r_hat*T_years (rolling 24.0h causal median implied rate (no lookahead)); capture_mode=reversion; no resampling -- every synchronized row (one per futures tick)",
+  "round_trip_cost_usd": 0.4975,
+  "by_percentile": {
+    "p0.9": {
+      "threshold_usd": 0.0082,
+      "n_qualifying_entries": 9497,
+      "horizons": {
+        "15min": {
+          "n_entries": 9496,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.1231,
+          "median_gross_capture_usd": -0.0679,
+          "mean_net_of_round_trip_usd": -0.6206,
+          "fraction_positive_gross_capture": 0.257,
+          "fraction_clearing_round_trip": 0.0014
+        },
+        "60min": {
+          "n_entries": 9284,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.3407,
+          "median_gross_capture_usd": -0.1525,
+          "mean_net_of_round_trip_usd": -0.8382,
+          "fraction_positive_gross_capture": 0.1592,
+          "fraction_clearing_round_trip": 0.0006
+        },
+        "240min": {
+          "n_entries": 9187,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.8913,
+          "median_gross_capture_usd": -0.5071,
+          "mean_net_of_round_trip_usd": -1.3888,
+          "fraction_positive_gross_capture": 0.0561,
+          "fraction_clearing_round_trip": 0.0013
+        }
+      }
+    },
+    "p0.95": {
+      "threshold_usd": 0.0086,
+      "n_qualifying_entries": 9928,
+      "horizons": {
+        "15min": {
+          "n_entries": 9927,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.1229,
+          "median_gross_capture_usd": -0.0676,
+          "mean_net_of_round_trip_usd": -0.6204,
+          "fraction_positive_gross_capture": 0.2582,
+          "fraction_clearing_round_trip": 0.0014
+        },
+        "60min": {
+          "n_entries": 9703,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.3398,
+          "median_gross_capture_usd": -0.1516,
+          "mean_net_of_round_trip_usd": -0.8373,
+          "fraction_positive_gross_capture": 0.161,
+          "fraction_clearing_round_trip": 0.0006
+        },
+        "240min": {
+          "n_entries": 9597,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.8925,
+          "median_gross_capture_usd": -0.507,
+          "mean_net_of_round_trip_usd": -1.39,
+          "fraction_positive_gross_capture": 0.0565,
+          "fraction_clearing_round_trip": 0.0013
+        }
+      }
+    },
+    "p0.99": {
+      "threshold_usd": 0.0089,
+      "n_qualifying_entries": 10301,
+      "horizons": {
+        "15min": {
+          "n_entries": 10300,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.1225,
+          "median_gross_capture_usd": -0.0675,
+          "mean_net_of_round_trip_usd": -0.62,
+          "fraction_positive_gross_capture": 0.2596,
+          "fraction_clearing_round_trip": 0.0014
+        },
+        "60min": {
+          "n_entries": 10071,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.3409,
+          "median_gross_capture_usd": -0.152,
+          "mean_net_of_round_trip_usd": -0.8384,
+          "fraction_positive_gross_capture": 0.1623,
+          "fraction_clearing_round_trip": 0.0006
+        },
+        "240min": {
+          "n_entries": 9964,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.8917,
+          "median_gross_capture_usd": -0.5066,
+          "mean_net_of_round_trip_usd": -1.3892,
+          "fraction_positive_gross_capture": 0.0571,
+          "fraction_clearing_round_trip": 0.0012
+        }
+      }
+    }
+  }
+}

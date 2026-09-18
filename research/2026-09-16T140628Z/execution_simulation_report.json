@@ -1,0 +1,30 @@
+{
+  "caveat": "This is a legging-drift estimate: how much the basis moves between decision and both legs' actual fills, using this project's own measured send-to-fill latency (n=20, bootstrap-resampled). It does NOT measure broker fill quality, requotes, rejections, or price improvement/adverse selection at the moment of fill -- R-007 already flags why a simulated environment cannot substitute for that. Latency is dated to 2026-09-17/18 Stage 2 conditions; the account owner has an open request with the broker to reduce futures feed latency, which would make this stale once it takes effect.",
+  "latency_source": "measurement_harness/arb_harness_stage2_journal.csv, n=20 real leg fills, Stage 2, 2026-09-17/18",
+  "unconditional": {
+    "label": "unconditional (15-min spacing, full 45-day window)",
+    "n": 4921,
+    "mean_usd": 0.0013,
+    "std_usd": 0.1202,
+    "p50_usd": 0.0,
+    "p90_usd": 0.1,
+    "p95_usd": 0.16,
+    "p99_usd": 0.37,
+    "min_usd": -1.1,
+    "max_usd": 1.77,
+    "fraction_exceeding_round_trip_0.4975": 0.0085
+  },
+  "anomaly_window_2026-09-11": {
+    "label": "R-004 anomaly window, 1s spacing, +/-45s",
+    "n": 90,
+    "mean_usd": 0.2926,
+    "std_usd": 3.763,
+    "p50_usd": 0.0,
+    "p90_usd": 1.281,
+    "p95_usd": 1.8815,
+    "p99_usd": 8.3082,
+    "min_usd": -9.5,
+    "max_usd": 32.89,
+    "fraction_exceeding_round_trip_0.4975": 0.4
+  }
+}

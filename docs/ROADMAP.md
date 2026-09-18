@@ -333,9 +333,16 @@ for one pair, not all ten). Full account: `docs/04_testing/35_1000_USD_LIVE_TEST
 `RISK_REGISTER.md` R-015, `DECISION_LOG.md` D-008's 2026-09-18 update.
 
 **This does not answer A4.** The harness measured execution cost/slippage against a live broker with zero
-signal logic — `02_quant/15_SIGNAL_RESEARCH.md` is still missing, and remains the critical path for the
-economics/strategy gate specifically. A candidate proposal exists (`docs/Gold-Basis-EA-Strategy-and-System-
-Design.md`) but was reviewed `NOT READY` and is not accepted.
+signal logic. **Update, 2026-09-19 (fifth pass):** `02_quant/15_SIGNAL_RESEARCH.md` now has a genuine
+out-of-sample result, the first this project has ever obtained — and it's negative. Fresh ticks collected
+after the original 45-day archive's end (2026-09-16) were run through the exact rolling-r̂/mid_basis/reversion
+configuration that looked promising in-sample: **0 of 9 tested combinations cleared the round-trip cost**,
+several at negative gross capture. The lead that motivated most of this document's prior passes did not
+replicate on data it had never touched. Sample is thin (~2.3 days) so this may not be the final word, but the
+failure is uniform across every configuration, not a marginal miss. **A4 currently has no surviving candidate
+signal.** No execution engine may be designed around this signal. A candidate architecture proposal exists
+(`docs/Gold-Basis-EA-Strategy-and-System-Design.md`) but was reviewed `NOT READY` and remains a tracked
+reference only.
 
 **Stage 3/4 (the automated 300-pair scheduler) will not be pursued — decided 2026-09-18 (D-009).** With Stage
 2's real cost baseline in hand (≈$0.55/pair), the account owner chose not to spend the guaranteed ≈$150–250

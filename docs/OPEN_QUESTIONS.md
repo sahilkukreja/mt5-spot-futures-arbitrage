@@ -80,8 +80,10 @@ stress multiplier?
 - **ANSWERED 2026-09-16 for the overnight structure — the question was partly mis-framed.** The basis does not
   mean-revert toward a level; it **decays deterministically** at **−$0.3905/day** (95% CI −$0.4480 … −$0.3330,
   R²=0.83, 5,843,313 synchronized rows from the full terminal tick exports) as the contract approaches expiry,
-  matching `12_FAIR_VALUE_MODEL.md`'s carry prediction of −$0.4832/day. Against one-sided spot swap of
-  −$0.7714/day, net carry is **−$0.3809/day with a 95% CI entirely below zero**: there is no overnight holding
+  matching `12_FAIR_VALUE_MODEL.md`'s carry prediction of −$0.4832/day. Against one-sided spot swap, **confirmed
+  by backtest 2026-09-18 (`ASSUMPTIONS.md` A-002) to be a flat −$0.60/day (`×7/7`)**, not the earlier
+  −$0.7714/day (`×9/7`) figure, net carry is **−$0.2095/day with the decay term's own 95% CI still applying**:
+  there is no overnight holding
   period at which the convergence trade is profitable. This also explains why the AR(1) half-life estimates
   kept inflating — they were fitting the drift, since there is no fixed mean to revert to. See
   `17_EXPECTED_VALUE.md` → "Correction 2026-09-16" and `13_BASIS_MODEL.md` → "Resolved 2026-09-16".
@@ -133,9 +135,10 @@ stress multiplier?
 2. What exact price relationship should we trade? — working answer: `Bid(GC-Z26) − Ask(XAUUSD.vx)` for the
    convergence (sell futures/buy spot) trade — see `02_quant/11_SPREAD_DEFINITION.md`. Not yet validated
    against a real distribution.
-3. What expected edge remains after all costs? — **answered for the hold-to-convergence structure, 2026-09-16:
-   negative.** Net carry −$0.3809/day (95% CI −$0.4384 … −$0.3234) once the basis decay rate (−$0.3905/day) is
-   measured against one-sided spot swap (−$0.7714/day). Expected P&L is negative at every holding period
+3. What expected edge remains after all costs? — **answered for the hold-to-convergence structure, 2026-09-16,
+   figure corrected 2026-09-18: negative.** Net carry −$0.2095/day (decay −$0.3905/day, 95% CI −$0.4480 …
+   −$0.3330, against spot swap confirmed by backtest to be a flat −$0.6000/day, `ASSUMPTIONS.md` A-002 —
+   supersedes the earlier −$0.7714/day figure). Expected P&L is negative at every holding period
    including same-day, once the $0.4975 round trip is added. Still open for an *intraday* structure, which
    pays no swap: measured daily range of `convergence_basis` is median $7.91 against that $0.4975 round trip,
    but no signal exists to capture it and slippage is still unmeasured. See `17_EXPECTED_VALUE.md` →
@@ -167,9 +170,48 @@ stress multiplier?
 7. What execution latency is acceptable? — open, not yet studied.
 8. What conditions make the strategy economically unviable? — **substantially answered 2026-09-16.** The
    condition is far more aggressive than previously thought: **any overnight hold at all**, not "longer than
-   3–4 weeks". The spot leg's one-sided swap (−$0.7714/day averaged for the Wednesday triple charge) exceeds
-   the basis decay the position earns (−$0.3905/day), so the trade bleeds −$0.3809/day from the first night.
+   3–4 weeks". The spot leg's one-sided swap (confirmed by backtest, 2026-09-18, to be a flat −$0.6000/day
+   including the Wednesday triple charge — `ASSUMPTIONS.md` A-002) exceeds
+   the basis decay the position earns (−$0.3905/day), so the trade bleeds −$0.2095/day from the first night.
    The earlier "3–4 weeks" figure came from comparing swap against the basis *level* rather than against the
    basis *change*, which overstated the revenue side — see `17_EXPECTED_VALUE.md` → "Correction 2026-09-16".
    Second unviability condition, unchanged and still open: entry/exit slippage large enough to consume the
    intraday move, which cannot be assessed without a demo execution trial.
+
+### Q-005: Does `compute_synchronized_basis()`'s futures-anchored merge bias every prior analysis in this
+project, not just the 2026-09-19 out-of-sample check that found it?
+- **Raised:** 2026-09-19, while re-checking `15_SIGNAL_RESEARCH.md`'s fifth-pass OOS result at finer
+  resolution.
+- **Blocks:** trusting any entry-timing/threshold-crossing statistic derived from the canonical merge
+  (`tools/mt5_data_collector.py`'s `compute_synchronized_basis()`), used by every prior pass in
+  `15_SIGNAL_RESEARCH.md` and by `12_FAIR_VALUE_MODEL.md`/`13_BASIS_MODEL.md`/`14_TRANSACTION_COST_MODEL.md`.
+- **Cause:** the merge anchors every row on a futures tick, backward-asof-matching the nearest prior spot
+  tick — spot-only tick events (spot price changes with no new futures tick) never get their own row.
+  Measured directly in the 2026-09-19 OOS window: 975,287 raw spot ticks vs. 454,269 raw futures ticks — over
+  half of all real spot price-change events are structurally invisible to the existing merge.
+- **What's already checked:** rebuilding the OOS series as a union of both legs' ticks (every tick from
+  either symbol its own row) and re-running the fifth-pass signal check found the same negative result, at
+  slightly greater magnitude — see `15_SIGNAL_RESEARCH.md` §13. So for *that specific check*, the bias (if
+  any) did not change the conclusion.
+- **Update, same day — checked, and it's material.** Re-ran the exact second-pass in-sample configuration
+  (same 45-day window, same rolling-r̂/mid_basis/reversion construction) against a union merge of the full
+  archive (15,184,998 rows vs. the original 5,843,313). Result reversed entirely: p99/240min mean net capture
+  went from **+$0.65 (86% clearing)** to **−$0.85 (0.4% clearing)**. The original "promising lead" that
+  motivated `15_SIGNAL_RESEARCH.md` sections 10–13 was very likely a merge artifact, not a real pattern —
+  `15_SIGNAL_RESEARCH.md` §14 retracts it on this basis.
+- **Closed, same day — the decay rate (D-006/`13_BASIS_MODEL.md`) checked directly and is robust.** Re-derived
+  the exact same OLS regression (`convergence_basis` vs. elapsed calendar days, full 51-day window) on both
+  merges: futures-anchored gives slope −$0.3873/day (R²=0.794, n=5,843,313); union merge gives −$0.3877/day
+  (R²=0.797, n=15,184,998). Agreement to within $0.0004/day — negligible, the opposite of what the A4 signal
+  check found. This makes sense in hindsight: the decay regression is a slow, aggregate 51-day trend that
+  converges to essentially the same estimate regardless of which ticks are sampled; the signal check was a
+  fine-grained, timing-sensitive statistic exactly where the dropped spot ticks mattered. (Minor, immaterial
+  note: this reproduction gives −0.3873 vs. the originally documented −0.3905/day, a ~0.8% difference likely
+  from small preprocessing differences, not a real discrepancy.)
+- **Status: closed.** Both halves of this question are answered: the A4 signal-timing statistics were
+  materially biased by the futures-anchored merge (reversed a headline result); the aggregate carry/decay
+  statistics underlying D-006 and the cost model were not (agree to within noise). Treat D-006's conclusion
+  (reject hold-to-convergence) as unaffected and still trustworthy. Any *future* pass involving
+  threshold-crossing or entry-timing logic should default to a union merge, or explicitly justify using the
+  futures-anchored one; aggregate distributional/regression statistics do not need to be re-derived on this
+  basis alone.

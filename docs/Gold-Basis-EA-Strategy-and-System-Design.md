@@ -8,10 +8,100 @@ The document's own central premise — that the carry-baseline residual mean-rev
 had no measurement anywhere in this repository at review time; two of the review's mandatory tests have since
 been run (see `docs/02_quant/12_FAIR_VALUE_MODEL.md` "Residual dispersion and reversion," 2026-09-18) and both
 came back *more* favorable than the review speculated, though still short of establishing tradeable edge.
-§4.3's swap-calendar correction is very likely incorrect — see the same date's chat record; this project's own
-`×9/7` figure is sourced and matches standard MT5 triple-swap convention. Not accepted as A4. Kept as a
-tracked reference, not a legacy quarantine item — it is a live candidate pending further evidence, not
-superseded material.
+Not accepted as A4. Kept as a tracked reference, not a legacy quarantine item — it is a live candidate pending
+further evidence, not superseded material.
+
+**§4.3 — resolved 2026-09-18, in this section's favor, by direct backtest (not just analysis).** A Strategy
+Tester probe (`MQL5/Experts/SwapScheduleProbe.mq5`, MT5's own swap engine, this account's real
+broker-configured `swap_long`/`swap_rollover3days` fields, zero live capital) held a real simulated position
+across two full weeks and logged the actual daily swap deltas: Mon/Tue/Thu/Fri −$0.60, **Wed −$1.80 (exactly
+3×, confirmed identically in both weeks)**, weekend **$0.00**. That totals `1+1+3+1+1 = 7` units over the
+7-day week — **exactly `×7/7`, flat $0.60/day, no markup** — confirming this section's "conventional-schedule
+illustration" was right and the repository's `×9/7` (`−$0.7714/day`) figure was the double-counting error
+this section warned about. See `docs/ASSUMPTIONS.md` A-002 for the full method and its one remaining caveat
+(this is a backtest using real broker-configured fields, not yet a live `DEAL_SWAP` cross-check — checked
+directly, 2026-09-18: this account's real deal history has no Wednesday- or weekend-crossing position to
+confirm against). **Consequence:** net carry on hold-to-convergence corrected to `−$0.2095/day` (was
+`−$0.3809/day`) — D-006 unaffected, still negative. Reverse-carry corrected to a near-zero `+$0.0095/day`
+(was `+$0.1238/day`), reinforcing its "not recommended" status. Propagated to `14_TRANSACTION_COST_MODEL.md`,
+`17_EXPECTED_VALUE.md`, `RISK_REGISTER.md` R-002, `DECISION_LOG.md` D-006.
+
+**Session halt window — measured directly from the canonical dataset, 2026-09-18, correcting an assumed figure.**
+A later "resolutions" document (see chat record) assumed a CME halt at 21:00-22:00 GMT with spot continuing to
+trade through it under wide spreads. Neither half of that assumption holds against this broker's real tick
+data: grouping both `research/GC-Z26_...csv` and `research/XAUUSD.vx_...csv` (45 days, 6.5M + 8.8M ticks) by
+minute-of-day shows **both legs go completely silent from ~21:58 UTC to ~23:00 UTC daily** (`GC-Z26`'s hour-22
+bucket has exactly zero ticks across the entire window; the boundary is sharp — last tick 21:57, first tick
+back 23:01, both legs, matching within a minute). This is **not** "futures halts, spot continues wide" as
+assumed — it is a genuine dual-feed blackout of roughly 62 minutes, every day, in this broker's actual data.
+Not yet decomposed by weekday (the aggregate is across all ~51 days, weekends included by construction since
+the underlying tick files span full calendar dates) or cross-checked against a specific published CME Globex
+schedule — but as a design input, "no quotes at all from ~21:58-23:00 UTC, both legs" is the safer and better-
+sourced assumption than either the fixed-hours guess or the "spot keeps trading" claim. Any session-restriction
+regime state should key off observed quote silence (already how `QuoteAgeMs()` works in
+`HarnessStage2_Guards.mqh`), not an assumed exchange calendar.
+
+**Deterministic tail-risk ceiling for R-008 (`17_EXPECTED_VALUE.md`'s Required Safety Margin) — proposed, not
+decided.** R-008 found the *conditional* p95 slippage distribution unmeasurable at any affordable sample size.
+Proposed alternative, per this section's own suggestion of "an explicit deterministic worst-case loss ceiling":
+use the single worst real adverse event already measured in this repository — the 2026-09-11 13:30:11 UTC
+fast-market event (`RISK_REGISTER.md` R-004), a ~54-point futures repricing in ~10 seconds against a frozen
+spot quote, worth **≈$54 (≈5.4% of the $1,000 ceiling) at 0.01 lot if a leg had been unhedged through it** —
+as a deterministic ceiling rather than a statistical percentile. This is one observed event (n=1), not a
+distribution; a defensible ceiling would need a safety multiplier on top (not sized here — that number would
+itself need justification, not be asserted). This is a proposed methodology change, not an accepted one — it
+needs its own decision-log entry and account-owner sign-off before `17_EXPECTED_VALUE.md` treats R-008 as
+closed, same as every other gate change in this project.
+
+**Unhedged-abort latency limits and margin liquidation tripwires — not resolved here, and not fabricated.**
+Both remain genuinely open. For latency limits: no number is proposed, because none is sourced — the same
+standard already applied twice in this project (R-004's velocity/quote-age/skew thresholds, R-013's timeouts)
+requires deriving these from real retry/failure data, which does not yet exist (no pair across Stage 2's 10
+real runs ever hit a transient retcode). For margin tripwires: a real, working, already-tested version of this
+exists — `GuardMarginLevelLogic()`'s `InpMinMarginLevelPct=300%` genuinely blocked a real trade (pair 3,
+R-014) when true account margin conditions warranted it. A future production risk engine's design should
+extend that pattern (dynamic, live-margin-based, already validated once end-to-end) rather than inventing a
+new one — but doing so is design work for `24_RISK_ENGINE.md`, which does not exist yet, not something to
+assert as settled here.
+
+**Update 2026-09-18 — the account owner authorized closing the non-calendar hostile-review conditions on
+paper, done in `20_SYSTEM_ARCHITECTURE.md` and `22_STATE_MACHINE.md`, not here:**
+- **Execution legging:** `22_STATE_MACHINE.md` now specifies a proposed default leg order (`GC-Z26` first,
+  `XAUUSD.vx` second, itself flagged as an unjustified starting choice per this section's own §8 caution) and
+  the existing `ORPHANED → EMERGENCY_FLATTENING` path on Leg 2 failure now has a named, explicitly
+  `UNCALIBRATED` timeout (`Leg2_Timeout_Ms`) instead of a silently-reused number.
+- **Session interlock:** `20_SYSTEM_ARCHITECTURE.md`'s Market Data Layer section now documents the real
+  measured daily quote blackout (~21:58–23:00 UTC, both legs, aggregate across the full 45-day dataset, not
+  decomposed by weekday) and specifies a liveness-based guard rather than a fixed exchange-hours table.
+- **Margin liquidation tripwires:** formalized in `20_SYSTEM_ARCHITECTURE.md`'s Risk Engine section, extending
+  `GuardMarginLevelLogic()`'s already-real, already-exercised pattern (R-014) rather than inventing a new one.
+
+None of this adds a calibrated number — every new figure introduced is either directly measured (the session
+window) or explicitly labeled UNCALIBRATED (the timeout, the production margin threshold). D-010 (accepted,
+2026-09-18) separately closed the Required Safety Margin gap in the Economics gate; see `DECISION_LOG.md` and
+`17_EXPECTED_VALUE.md`. None of this changes condition 3 below — it remains the sole blocking condition.
+
+**Conditions carried forward from the 2026-09-18 `/arb-risk-review`, tracked here until each clears:**
+1. §4.3 — **cleared, 2026-09-18, by backtest** — see above. Confirmed `×7/7` flat $0.60/day, not `×9/7`.
+2. §13's "not yet justified numerically" list cannot be responsibly calibrated yet. The signal-side parameters
+   (residual bands, correction horizon, uncertainty allowance) are downstream of condition 3 below — calibrating
+   them against data that hasn't cleared out-of-sample validation would be fitting to the same window a second
+   time, not calibration. The execution/risk-side parameters (quote age, velocity, cross-leg skew) already have
+   real *candidates* from unrelated work — `HarnessStage2_Guards.mqh`'s `InpMaxVelocityPtsPerSec=20.0`,
+   `InpMaxQuoteAgeMs=2000`, `InpMaxCrossLegSkewMs=400` — but those are themselves still labeled UNCALIBRATED
+   (`RISK_REGISTER.md` R-004) with only one real block/pass data point each; they are a starting reference for
+   this design, not a cleared input.
+3. **Open, blocking.** `docs/02_quant/15_SIGNAL_RESEARCH.md` §11 (third pass, 2026-09-18): the rolling-`r̂`
+   lead holds up on a same-window held-out slice, but that is not out-of-sample — the same 45-day collection
+   window backs every test run against it so far. Genuine out-of-sample validation needs real ticks from
+   **after** 2026-09-16 (the current dataset's end), which do not exist yet as of this writing. Do not adopt
+   this document's §5 signal specification as A4 until that validation exists and holds.
+4. **Open.** §10's account-control language ("unexplained account activity blocks new entries") is generic.
+   This project has already lived the concrete failure this should name: R-014, a second EA
+   (`MMT_TradePannel_Pro`) live-trading the same account, undetected by any deliberate check until found by
+   chance in a log excerpt. A future revision toward implementation should require an explicit whole-account
+   `PositionsTotal()`/`PositionSelectByTicket()` sweep independent of this EA's own magic-number filtering —
+   not rely on generic "unexplained activity" language, which is exactly what missed it the first time.
 
 ## Decision
 

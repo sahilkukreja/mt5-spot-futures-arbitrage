@@ -1,0 +1,115 @@
+{
+  "status": "measured",
+  "model": "x_t = mid_basis - spot_ask*r_hat*T_years (rolling 24.0h causal median implied rate (no lookahead)); capture_mode=reversion; 1min resampled series",
+  "round_trip_cost_usd": 0.4975,
+  "by_percentile": {
+    "p0.9": {
+      "threshold_usd": 0.0078,
+      "n_qualifying_entries": 26,
+      "horizons": {
+        "15min": {
+          "n_entries": 26,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.0892,
+          "median_gross_capture_usd": -0.0388,
+          "mean_net_of_round_trip_usd": -0.5867,
+          "fraction_positive_gross_capture": 0.3077,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "60min": {
+          "n_entries": 24,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.1842,
+          "median_gross_capture_usd": -0.1886,
+          "mean_net_of_round_trip_usd": -0.6817,
+          "fraction_positive_gross_capture": 0.0,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "240min": {
+          "n_entries": 24,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.4341,
+          "median_gross_capture_usd": -0.3781,
+          "mean_net_of_round_trip_usd": -0.9316,
+          "fraction_positive_gross_capture": 0.125,
+          "fraction_clearing_round_trip": 0.0
+        }
+      }
+    },
+    "p0.95": {
+      "threshold_usd": 0.0083,
+      "n_qualifying_entries": 27,
+      "horizons": {
+        "15min": {
+          "n_entries": 27,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.0927,
+          "median_gross_capture_usd": -0.0424,
+          "mean_net_of_round_trip_usd": -0.5902,
+          "fraction_positive_gross_capture": 0.2963,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "60min": {
+          "n_entries": 25,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.1857,
+          "median_gross_capture_usd": -0.2046,
+          "mean_net_of_round_trip_usd": -0.6832,
+          "fraction_positive_gross_capture": 0.0,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "240min": {
+          "n_entries": 25,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.4375,
+          "median_gross_capture_usd": -0.426,
+          "mean_net_of_round_trip_usd": -0.935,
+          "fraction_positive_gross_capture": 0.12,
+          "fraction_clearing_round_trip": 0.0
+        }
+      }
+    },
+    "p0.99": {
+      "threshold_usd": 0.0084,
+      "n_qualifying_entries": 28,
+      "horizons": {
+        "15min": {
+          "n_entries": 28,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.0946,
+          "median_gross_capture_usd": -0.0656,
+          "mean_net_of_round_trip_usd": -0.5921,
+          "fraction_positive_gross_capture": 0.2857,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "60min": {
+          "n_entries": 26,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.1841,
+          "median_gross_capture_usd": -0.1886,
+          "mean_net_of_round_trip_usd": -0.6816,
+          "fraction_positive_gross_capture": 0.0,
+          "fraction_clearing_round_trip": 0.0
+        },
+        "240min": {
+          "n_entries": 26,
+          "n_excluded_wednesday_swap": 0,
+          "n_truncated_wednesday_swap": 0,
+          "mean_gross_capture_usd": -0.4446,
+          "median_gross_capture_usd": -0.434,
+          "mean_net_of_round_trip_usd": -0.9421,
+          "fraction_positive_gross_capture": 0.1154,
+          "fraction_clearing_round_trip": 0.0
+        }
+      }
+    }
+  }
+}
