@@ -439,6 +439,101 @@ def analyze_residual_reversion(
     return result
 
 
+def analyze_threshold_reversion(
+    basis: pd.DataFrame,
+    expiry_date: str,
+    r_hat: float,
+    percentiles: tuple[float, ...],
+    horizons_minutes: tuple[int, ...],
+    round_trip_cost: float = 0.4975,
+) -> dict[str, Any]:
+    """The actual missing test for 02_quant/15_SIGNAL_RESEARCH.md: does the carry-baseline residual x_t
+    revert far enough, after crossing an extreme threshold, to clear round-trip cost -- gross of slippage,
+    which remains barely measured (n=10 real Stage 2 pairs) and is NOT subtracted here. This is an event
+    study, not a backtest: for each threshold percentile of |x_t| (computed on a 1-min resampled series to
+    reduce tick noise), find each "entry" -- a bar where |x_t| first crosses above the threshold after being
+    below it -- then measure x_t at entry+horizon for several horizons. capture = |x_t(entry)| -
+    |x_t(entry+horizon)| is the dollar amount of the extreme that reverted (positive = reverted toward zero,
+    negative = the residual moved further away). net_capture = capture - round_trip_cost is what's left
+    after the one fixed cost this project has actually sourced.
+
+    What this does NOT establish, stated explicitly:
+    - No slippage or latency subtracted -- Stage 2's own real pairs (n=10) are nowhere near enough for a
+      slippage distribution; results here are a gross-of-slippage upper bound, not a net-of-everything claim.
+    - Fixed r_hat, not the "lagged robust estimate" any real signal would use -- same simplification as
+      analyze_residual_reversion().
+    - Overlapping entry events are not independent samples (an extreme excursion can trigger several nearby
+      entries as it decays) -- reported n is a count of qualifying bars, not independent observations; treat
+      the reported distribution as indicative, not a rigorous confidence interval.
+    - Direction-agnostic: captures the magnitude of reversion, not whether a real strategy could actually
+      execute both legs in the correct direction at the moment of crossing.
+    """
+    required = {"fut_time_msc", "mid_basis", "spot_ask"}
+    if not required.issubset(basis.columns):
+        return {"status": "insufficient_data", "reason": f"missing columns: {sorted(required - set(basis.columns))}"}
+
+    frame = basis[["fut_time_msc", "mid_basis", "spot_ask"]].copy()
+    frame["fut_time_utc"] = pd.to_datetime(frame["fut_time_msc"], unit="ms", utc=True)
+    expiry = pd.Timestamp(expiry_date, tz="UTC")
+    frame["T_years"] = (expiry - frame["fut_time_utc"]).dt.total_seconds() / (365 * 24 * 3600)
+    frame = frame[frame["T_years"] > 0].dropna(subset=["mid_basis", "spot_ask"])
+    if frame.empty:
+        return {"status": "insufficient_data", "reason": "all rows are at/after the supplied expiry date"}
+    frame["x_t"] = frame["mid_basis"] - frame["spot_ask"] * r_hat * frame["T_years"]
+
+    timestamps = pd.to_datetime(frame["fut_time_msc"], unit="ms", utc=True)
+    series = pd.Series(frame["x_t"].to_numpy(), index=timestamps).sort_index()
+    one_min = series.resample("1min").last().dropna()
+    abs_x = one_min.abs()
+
+    result: dict[str, Any] = {
+        "status": "measured",
+        "model": "event study on x_t = mid_basis - spot_ask*r_hat*T_years, r_hat fixed at the supplied "
+        "median rate; 1-min resampled series",
+        "round_trip_cost_usd": round_trip_cost,
+        "by_percentile": {},
+    }
+
+    for pct in percentiles:
+        threshold = float(abs_x.quantile(pct / 100.0))
+        above = abs_x >= threshold
+        # Entry = first bar of a new excursion above threshold (previous bar was below).
+        entries = above & ~above.shift(1, fill_value=False)
+        entry_times = abs_x.index[entries.to_numpy()]
+
+        horizon_results: dict[str, Any] = {}
+        for h in horizons_minutes:
+            captures = []
+            for t in entry_times:
+                t_exit = t + pd.Timedelta(minutes=h)
+                idx = one_min.index.searchsorted(t_exit)
+                if idx >= len(one_min):
+                    continue
+                x_entry = one_min.loc[t]
+                x_exit = one_min.iloc[idx]
+                captures.append(abs(x_entry) - abs(x_exit))
+            if not captures:
+                horizon_results[f"{h}min"] = {"status": "insufficient_data", "reason": "no entry had a valid exit bar"}
+                continue
+            cap_series = pd.Series(captures)
+            horizon_results[f"{h}min"] = {
+                "n_entries": int(cap_series.size),
+                "mean_gross_capture_usd": round(float(cap_series.mean()), 4),
+                "median_gross_capture_usd": round(float(cap_series.median()), 4),
+                "mean_net_of_round_trip_usd": round(float(cap_series.mean()) - round_trip_cost, 4),
+                "fraction_positive_gross_capture": round(float((cap_series > 0).mean()), 4),
+                "fraction_clearing_round_trip": round(float((cap_series > round_trip_cost).mean()), 4),
+            }
+
+        result["by_percentile"][f"p{pct:g}"] = {
+            "threshold_usd": round(threshold, 4),
+            "n_qualifying_entries": int(entry_times.size),
+            "horizons": horizon_results,
+        }
+
+    return result
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Offline Q-003 and Q-004 evidence analyzer.")
     parser.add_argument("--basis-csv", type=Path, required=True, help="basis_synchronized.csv from a tick run")
@@ -495,6 +590,20 @@ def parse_args() -> argparse.Namespace:
         "analysis (analyze_residual_reversion). Requires --expiry-date. Use the already-validated median "
         "implied rate from a prior --expiry-date run, not an assumed value.",
     )
+    parser.add_argument(
+        "--threshold-percentiles",
+        type=float,
+        nargs="+",
+        help="Percentiles of |x_t| (e.g. 90 95 99) to test as entry thresholds in the threshold-reversion "
+        "event study (analyze_threshold_reversion). Requires --expiry-date and --residual-r-hat.",
+    )
+    parser.add_argument(
+        "--reversion-horizons-minutes",
+        type=int,
+        nargs="+",
+        default=[15, 60, 240],
+        help="Horizons (minutes) to check post-entry for the threshold-reversion event study",
+    )
     return parser.parse_args()
 
 
@@ -525,6 +634,11 @@ def main() -> None:
     if args.expiry_date and args.residual_r_hat is not None:
         report["residual_reversion"] = analyze_residual_reversion(
             basis, args.expiry_date, args.residual_r_hat, tuple(args.decay_resample_minutes)
+        )
+    if args.expiry_date and args.residual_r_hat is not None and args.threshold_percentiles:
+        report["threshold_reversion"] = analyze_threshold_reversion(
+            basis, args.expiry_date, args.residual_r_hat,
+            tuple(args.threshold_percentiles), tuple(args.reversion_horizons_minutes),
         )
     output = args.output or args.basis_csv.parent / "q3_q4_report.json"
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -20,17 +20,22 @@ document, the document is right and this file is stale — fix it. Last synced: 
 
 Full picture, always current: **`docs/ROADMAP.md`**. Read it before answering any "what next" question.
 
-Mandated doc tree is 41 files; 17 exist, 12 have content. `02_quant/15_SIGNAL_RESEARCH.md` is **still missing**
-and is the current critical path for the strategy/economics gate specifically — **not** the same as "no work
-exists" (see below). `01_research/01`–`05` are empty stubs. `04_testing/` has real, extensive content
-(`34_DEMO_TEST_PLAN.md`, `35_1000_USD_LIVE_TEST_PLAN.md`) — **not empty**, corrected 2026-09-18. `06_operations/`
-has `PHASE_GRADUATION_CRITERIA.md` — **not empty**, corrected 2026-09-18. `05_development/` is still empty.
+Mandated doc tree is 41 files; 17 exist, 12 have content (13 as of 2026-09-18, see below). `01_research/01`–`05`
+are empty stubs. `04_testing/` has real, extensive content (`34_DEMO_TEST_PLAN.md`,
+`35_1000_USD_LIVE_TEST_PLAN.md`) — not empty, corrected 2026-09-18. `06_operations/` has
+`PHASE_GRADUATION_CRITERIA.md` — not empty, corrected 2026-09-18. `05_development/` is still empty.
 
-**A candidate A4 signal proposal exists but is not accepted:** `docs/Gold-Basis-EA-Strategy-and-System-Design.md`
-(external proposal, tracked 2026-09-18) — `/arb-hostile-review` verdict NOT READY as a basis for adoption; its
-central premise (residual mean-reversion) has partial supporting measurement now (`12_FAIR_VALUE_MODEL.md`
-"Residual dispersion and reversion," 2026-09-18) but no net-of-cost expected-value evidence. Its architecture
-sections are a credible reference regardless. Do not treat this as filling the `15_SIGNAL_RESEARCH.md` gap.
+**`02_quant/15_SIGNAL_RESEARCH.md` is written, 2026-09-18 — first pass, no edge found yet, not a final
+answer.** Tested whether the carry-baseline residual (mean-reversion candidate) reverts far enough to clear
+round-trip cost via a threshold-crossing event study (3 percentile thresholds × 3 fixed horizons, 45-day
+dataset). **Result: no net-of-round-trip-cost edge in any of the 9 combinations tested, gross of slippage**
+(best case only cleared cost 46% of the time). Real, recorded negative result — not proof no formulation
+could work (fixed `r̂` instead of the proposal's own rolling estimate, and fixed-horizon exit instead of
+proper reversion-triggered exit, are both untested refinements). Smallest next test: re-run with a
+rolling/lagged `r̂`. An external candidate proposal, `docs/Gold-Basis-EA-Strategy-and-System-Design.md`
+(tracked, not accepted, `/arb-hostile-review` NOT READY), motivated this test but is not itself what was
+tested — its own more sophisticated specification (rolling baseline, regime filtering, proper exit policy)
+remains unexplored.
 
 ## The decisive finding (2026-09-16) — do not re-derive this
 

@@ -86,8 +86,11 @@ stress multiplier?
   kept inflating — they were fitting the drift, since there is no fixed mean to revert to. See
   `17_EXPECTED_VALUE.md` → "Correction 2026-09-16" and `13_BASIS_MODEL.md` → "Resolved 2026-09-16".
   **Still open, and now the only live form of this question:** the holding-period distribution for *intraday*
-  trades, which pay no swap. That is a signal-design question for the unwritten `15_SIGNAL_RESEARCH.md`, not a
-  basis-statistics question. The original status text is retained below as a record.
+  trades, which pay no swap. That is a signal-design question, now addressed in `15_SIGNAL_RESEARCH.md`
+  (written 2026-09-18) — first-pass result: no net-of-round-trip-cost edge found in a simple threshold-
+  reversion test of the carry-baseline residual, across 3 thresholds × 3 horizons, gross of slippage. Not a
+  final answer (several refinements unexplored, see that document §5–6), but no longer unwritten. The
+  original status text is retained below as a record.
 
 
 - **Raised:** 2026-09-15
